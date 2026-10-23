@@ -5,6 +5,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.example.model.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import org.json.JSONObject
 
 object StudioRepository {
     private const val TAG = "StudioRepository"
@@ -483,12 +487,136 @@ object StudioRepository {
         )
     )
 
+    private var realtimeChannel: SupabaseRealtimeChannel? = null
+
     /**
-     * Synchronizes live data from Supabase PostgREST API.
+     * Initializes Supabase Realtime WebSocket listeners using the requested pattern:
+     *   supabase.channel("app_realtime_changes").on(...).subscribe()
+     * Automatically updates reactive Compose states when edits are made in the Web Admin Panel.
+     */
+    fun startRealtimeListener() {
+        if (realtimeChannel != null && realtimeChannel?.status == "SUBSCRIBED") {
+            return
+        }
+
+        realtimeChannel = supabase.channel("app_realtime_changes")
+            .on("channel_profile") { record ->
+                handleChannelProfileRealtime(record)
+            }
+            .on("dashboard_metrics") { record ->
+                handleDashboardMetricsRealtime(record)
+            }
+            .on("videos") { record ->
+                handleVideosRealtime(record)
+            }
+            .on("analytics_overview") { record ->
+                handleAnalyticsRealtime(record)
+            }
+            .subscribe { status ->
+                Log.d(TAG, "Supabase Realtime Channel Status: $status")
+                if (status == "SUBSCRIBED") {
+                    isConnectedToSupabase = true
+                }
+            }
+    }
+
+    private fun handleChannelProfileRealtime(record: JSONObject) {
+        CoroutineScope(Dispatchers.Main).launch {
+            val current = danielProfile
+            val updated = current.copy(
+                name = record.optString("name", current.name),
+                handle = record.optString("handle", current.handle),
+                subscribersCount = record.optString("subscribers_count", current.subscribersCount),
+                email = record.optString("email", current.email),
+                isMonetized = if (record.has("is_monetized")) record.optBoolean("is_monetized") else current.isMonetized
+            )
+            danielProfile = updated
+            currentProfile = updated
+            isConnectedToSupabase = true
+            Log.d(TAG, "Realtime update: channel_profile updated -> ${updated.name}, subs=${updated.subscribersCount}, monetized=${updated.isMonetized}")
+        }
+    }
+
+    private fun handleDashboardMetricsRealtime(record: JSONObject) {
+        CoroutineScope(Dispatchers.Main).launch {
+            if (record.has("views")) dashboardViews = record.optString("views", dashboardViews)
+            if (record.has("watch_time")) dashboardWatchTime = record.optString("watch_time", dashboardWatchTime)
+            if (record.has("subscribers")) dashboardSubscribers = record.optString("subscribers", dashboardSubscribers)
+            if (record.has("revenue")) dashboardRevenue = record.optString("revenue", dashboardRevenue)
+            if (record.has("period_label")) dashboardPeriodLabel = record.optString("period_label", dashboardPeriodLabel)
+            isConnectedToSupabase = true
+            Log.d(TAG, "Realtime update: dashboard_metrics updated -> views=$dashboardViews, revenue=$dashboardRevenue")
+        }
+    }
+
+    private fun handleVideosRealtime(record: JSONObject) {
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                val remoteVideos = SupabaseClient.fetchVideos()
+                if (!remoteVideos.isNullOrEmpty()) {
+                    val videos = remoteVideos.filter { it.type == ContentType.VIDEO }
+                    val shorts = remoteVideos.filter { it.type == ContentType.SHORT }
+                    val lives = remoteVideos.filter { it.type == ContentType.LIVE }
+
+                    if (videos.isNotEmpty()) contentVideos = videos
+                    if (shorts.isNotEmpty()) contentShorts = shorts
+                    if (lives.isNotEmpty()) contentLiveStreams = lives
+
+                    val latest = remoteVideos.find { it.isExpanded } ?: remoteVideos.firstOrNull()
+                    if (latest != null) {
+                        dashboardLatestVideo = latest
+                    }
+                    isConnectedToSupabase = true
+                    Log.d(TAG, "Realtime update: videos refreshed (${remoteVideos.size} items)")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error refreshing videos on realtime event", e)
+            }
+        }
+    }
+
+    private fun handleAnalyticsRealtime(record: JSONObject) {
+        CoroutineScope(Dispatchers.Main).launch {
+            val title = record.optString("title", "")
+            val value = record.optString("value", "")
+            val subtitle = record.optString("subtitle", "")
+            val isPositive = record.optBoolean("is_positive", true)
+
+            if (title.contains("Views", ignoreCase = true)) {
+                overviewViewsMetric = overviewViewsMetric.copy(value = value, subtitle = subtitle, isPositive = isPositive)
+            } else if (title.contains("Watch", ignoreCase = true)) {
+                overviewWatchTimeMetric = overviewWatchTimeMetric.copy(value = value, subtitle = subtitle, isPositive = isPositive)
+            } else if (title.contains("Subscribers", ignoreCase = true)) {
+                overviewSubscribersMetric = overviewSubscribersMetric.copy(value = value, subtitle = subtitle, isPositive = isPositive)
+            } else if (title.contains("Revenue", ignoreCase = true)) {
+                overviewEstimatedRevenueMetric = overviewEstimatedRevenueMetric.copy(value = value, subtitle = subtitle, isPositive = isPositive)
+            }
+
+            try {
+                val remoteAnalytics = SupabaseClient.fetchAnalyticsOverview()
+                if (!remoteAnalytics.isNullOrEmpty()) {
+                    remoteAnalytics.find { it.title.equals("Views", ignoreCase = true) }?.let { overviewViewsMetric = it }
+                    remoteAnalytics.find { it.title.contains("Watch", ignoreCase = true) }?.let { overviewWatchTimeMetric = it }
+                    remoteAnalytics.find { it.title.equals("Subscribers", ignoreCase = true) }?.let { overviewSubscribersMetric = it }
+                    remoteAnalytics.find { it.title.contains("Revenue", ignoreCase = true) }?.let { overviewEstimatedRevenueMetric = it }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error refreshing analytics on realtime event", e)
+            }
+            isConnectedToSupabase = true
+            Log.d(TAG, "Realtime update: analytics updated -> $title: $value")
+        }
+    }
+
+    /**
+     * Synchronizes live data from Supabase PostgREST API and ensures Realtime listeners are active.
      * If offline, misconfigured, or tables do not exist yet,
      * falls back gracefully without modifying default values.
      */
     suspend fun syncWithSupabase() {
+        // Ensure Realtime WebSocket listeners are started
+        startRealtimeListener()
+
         if (isSyncing) return
         isSyncing = true
         lastSyncError = null

@@ -22,6 +22,12 @@ object SupabaseClient {
 
     // Resolves publishable anon key from BuildConfig (.env) or runtime override
     var runtimeAnonKeyOverride: String = ""
+        set(value) {
+            field = value
+            if (value.isNotBlank()) {
+                SupabaseRealtimeClient.connect()
+            }
+        }
 
     val anonKey: String
         get() {
@@ -32,6 +38,13 @@ object SupabaseClient {
                 ""
             }
         }
+
+    /**
+     * Creates or returns a Supabase Realtime channel for WebSocket postgres_changes listeners.
+     */
+    fun channel(name: String = "app_realtime_changes"): SupabaseRealtimeChannel {
+        return SupabaseRealtimeClient.channel(name)
+    }
 
     suspend fun fetchChannelProfile(): ChannelProfile? = withContext(Dispatchers.IO) {
         val key = anonKey

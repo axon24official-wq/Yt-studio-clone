@@ -50,9 +50,10 @@ fun StudioApp() {
 
     val colors = StudioTheme.colors
 
-    // Sync live data from Supabase in the background on app start
+    // Sync live data from Supabase and listen for Realtime WebSocket updates
     LaunchedEffect(Unit) {
         com.example.data.StudioRepository.syncWithSupabase()
+        com.example.data.StudioRepository.startRealtimeListener()
     }
 
     // Hardware back navigation handler
