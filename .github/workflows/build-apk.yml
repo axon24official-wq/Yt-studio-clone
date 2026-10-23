@@ -23,25 +23,32 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-          cache: gradle
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
-      - name: Accept Android SDK licenses
-        run: yes | sdkmanager --licenses || true
+      - name: Verify Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          sdkmanager --version
 
       - name: Build Debug APK
         run: |
           if [ -f ./gradlew ]; then
             chmod +x ./gradlew
-            ./gradlew assembleDebug
+            ./gradlew --no-daemon assembleDebug
+          elif [ -f ./gradlew.bat ]; then
+            echo "Windows wrapper found but Linux wrapper is missing."
+            exit 1
           else
-            echo "Gradle wrapper missing; checking system Gradle"
-            gradle assembleDebug
+            echo "Gradle wrapper (gradlew) is missing from repository root."
+            echo "Please add the project's Gradle wrapper before building."
+            exit 1
           fi
 
       - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: yt-studio-debug-apk
