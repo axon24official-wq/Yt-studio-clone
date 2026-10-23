@@ -1,3 +1,4 @@
+
 name: Build Android APK
 
 on:
@@ -5,75 +6,44 @@ on:
   push:
     branches:
       - main
-      - master
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+permissions:
+  contents: read
 
 jobs:
-  build-apk:
-    name: Build Debug APK
-    runs-on: ubuntu-latest
+  build:
+    runs-on: ubuntu-24.04
 
     steps:
-      - name: Checkout Source Code
-        uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v5
 
-      - name: Set up JDK 21 (Temurin)
-        uses: actions/setup-java@v4
+      - name: Set up Java
+        uses: actions/setup-java@v5
         with:
-          java-version: '21'
-          distribution: 'temurin'
-          cache: 'gradle'
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Accept Android SDK Licenses & Install API 36
-        run: |
-          yes | sdkmanager --licenses || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0" || true
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses || true
 
-      - name: Prepare Keystore and Environment
+      - name: Build Debug APK
         run: |
-          # The app/build.gradle.kts requires debug.keystore in the project root.
-          # Because debug.keystore is gitignored, decode from debug.keystore.base64 if present.
-          if [ ! -f "debug.keystore" ] && [ -f "debug.keystore.base64" ]; then
-            echo "Decoding debug.keystore from base64..."
-            base64 -d debug.keystore.base64 > debug.keystore
-          elif [ ! -f "debug.keystore" ]; then
-            echo "Generating fallback debug keystore..."
-            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          if [ -f ./gradlew ]; then
+            chmod +x ./gradlew
+            ./gradlew assembleDebug
+          else
+            echo "Gradle wrapper missing; checking system Gradle"
+            gradle assembleDebug
           fi
-          # Ensure .env exists for the Secrets Gradle Plugin
-          touch .env
 
-      - name: Set up Gradle 9.3.1
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.3.1'
-
-      - name: Ensure Gradle Wrapper Executable
-        run: |
-          if [ ! -f "./gradlew" ]; then
-            echo "Generating gradlew wrapper..."
-            gradle wrapper --gradle-version 9.3.1
-          fi
-          chmod +x ./gradlew
-
-      - name: Build Debug APK with Gradle
-        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
-
-      - name: Verify Generated APK
-        run: |
-          echo "Checking generated APKs:"
-          ls -la app/build/outputs/apk/debug/
-
-      - name: Upload APK Artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: YT-Studio-Clone-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: yt-studio-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-          retention-days: 14
