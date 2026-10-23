@@ -1,19 +1,29 @@
 package com.example.data
 
+import android.util.Log
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.example.model.*
 
 object StudioRepository {
-    val danielProfile = ChannelProfile(
+    private const val TAG = "StudioRepository"
+
+    // Default Profile
+    private val defaultDanielProfile = ChannelProfile(
         id = "channel_daniel",
         name = "Daniel Dalen",
         handle = "@danieldalen",
-        subscribersCount = "48,237"
+        subscribersCount = "48,237",
+        isMonetized = true
     )
 
-    val currentProfile = danielProfile
+    // Reactive Profile (updates automatically when synced)
+    var danielProfile by mutableStateOf(defaultDanielProfile)
+    var currentProfile by mutableStateOf(defaultDanielProfile)
 
     val demoChannels = listOf(
-        danielProfile,
+        defaultDanielProfile,
         ChannelProfile(
             id = "channel_angel",
             name = "Angel",
@@ -28,71 +38,81 @@ object StudioRepository {
         )
     )
 
-    // Dashboard analytics 2x2 grid data (matching reference)
-    val dashboardViews = "887.7K"
-    val dashboardWatchTime = "66.2K"
-    val dashboardSubscribers = "+39.0K"
-    val dashboardRevenue = "$0"
+    // Dashboard analytics 2x2 grid data (reactive Compose state)
+    var dashboardViews by mutableStateOf("887.7K")
+    var dashboardWatchTime by mutableStateOf("66.2K")
+    var dashboardSubscribers by mutableStateOf("+39.0K")
+    var dashboardRevenue by mutableStateOf("$0")
+    var dashboardPeriodLabel by mutableStateOf("Last 28 days")
 
-    // Dashboard latest published video (matching reference)
-    val dashboardLatestVideo = VideoItem(
-        id = "vid_daniel_pov",
-        title = "pov: a 26 year old entrepreneur at a bus...",
-        type = ContentType.VIDEO,
-        duration = "8:42",
-        publishedTimeAgo = "First 1 day, 6 hours",
-        views = 39500,
-        likes = 2700,
-        comments = 220,
-        rankingText = "1 of 10",
-        avgPercentageViewed = "5:50",
-        isExpanded = true,
-        thumbnailTitle = "POV"
+    // Sync State
+    var isSyncing by mutableStateOf(false)
+    var isConnectedToSupabase by mutableStateOf(false)
+    var lastSyncError by mutableStateOf<String?>(null)
+
+    // Dashboard latest published video
+    var dashboardLatestVideo by mutableStateOf(
+        VideoItem(
+            id = "vid_daniel_pov",
+            title = "pov: a 26 year old entrepreneur at a bus...",
+            type = ContentType.VIDEO,
+            duration = "8:42",
+            publishedTimeAgo = "First 1 day, 6 hours",
+            views = 39500,
+            likes = 2700,
+            comments = 220,
+            rankingText = "1 of 10",
+            avgPercentageViewed = "5:50",
+            isExpanded = true,
+            thumbnailTitle = "POV"
+        )
     )
 
-    // Dashboard latest content
-    val latestPublishedContent = listOf(
-        VideoItem(
-            id = "vid_unfreeze",
-            title = "#unfrezzmyaccount #lifeisbutadrea...",
-            type = ContentType.SHORT,
-            duration = "0:15",
-            publishedTimeAgo = "First 177 days, 14 hours",
-            views = 2,
-            likes = 0,
-            comments = 0,
-            rankingText = "8 of 10",
-            avgPercentageViewed = "95.0%",
-            isExpanded = true,
-            thumbnailTitle = "UNFREEZE"
-        ),
-        VideoItem(
-            id = "vid_26march",
-            title = "26 March 2026",
-            type = ContentType.SHORT,
-            duration = "0:12",
-            publishedTimeAgo = "First 209 days, 21 hours",
-            views = 6,
-            likes = 0,
-            comments = 0,
-            rankingText = "3 of 10",
-            avgPercentageViewed = "84.2%",
-            isExpanded = false,
-            thumbnailTitle = "26 MARCH"
-        ),
-        VideoItem(
-            id = "vid_eid",
-            title = "#eidkobhoga2026 #eid #eidmubarak",
-            type = ContentType.VIDEO,
-            duration = "0:27",
-            publishedTimeAgo = "First 217 days, 12 hours",
-            views = 1,
-            likes = 0,
-            comments = 0,
-            rankingText = "9 of 10",
-            avgPercentageViewed = "62.0%",
-            isExpanded = false,
-            thumbnailTitle = "सऊदी से आ गई बड़ी खबर चाँद हुआ या नहीं? 2026"
+    // Dashboard latest content list
+    var latestPublishedContent by mutableStateOf(
+        listOf(
+            VideoItem(
+                id = "vid_unfreeze",
+                title = "#unfrezzmyaccount #lifeisbutadrea...",
+                type = ContentType.SHORT,
+                duration = "0:15",
+                publishedTimeAgo = "First 177 days, 14 hours",
+                views = 2,
+                likes = 0,
+                comments = 0,
+                rankingText = "8 of 10",
+                avgPercentageViewed = "95.0%",
+                isExpanded = true,
+                thumbnailTitle = "UNFREEZE"
+            ),
+            VideoItem(
+                id = "vid_26march",
+                title = "26 March 2026",
+                type = ContentType.SHORT,
+                duration = "0:12",
+                publishedTimeAgo = "First 209 days, 21 hours",
+                views = 6,
+                likes = 0,
+                comments = 0,
+                rankingText = "3 of 10",
+                avgPercentageViewed = "84.2%",
+                isExpanded = false,
+                thumbnailTitle = "26 MARCH"
+            ),
+            VideoItem(
+                id = "vid_eid",
+                title = "#eidkobhoga2026 #eid #eidmubarak",
+                type = ContentType.VIDEO,
+                duration = "0:27",
+                publishedTimeAgo = "First 217 days, 12 hours",
+                views = 1,
+                likes = 0,
+                comments = 0,
+                rankingText = "9 of 10",
+                avgPercentageViewed = "62.0%",
+                isExpanded = false,
+                thumbnailTitle = "सऊदी से आ गई बड़ी खबर चाँद हुआ या नहीं? 2026"
+            )
         )
     )
 
@@ -105,184 +125,197 @@ object StudioRepository {
         likesCount = 0
     )
 
-    // Content tab lists
-    val contentVideos = listOf(
-        VideoItem(
-            id = "c_vid_1",
-            title = "#eidkobhoga2026 #eid #...",
-            type = ContentType.VIDEO,
-            duration = "0:27",
-            publishedTimeAgo = "217 days ago",
-            views = 1,
-            likes = 0,
-            thumbnailTitle = "सऊदी से आ गई बड़ी खबर\nचाँद हुआ या नहीं?\n2026"
-        ),
-        VideoItem(
-            id = "c_vid_2",
-            title = "Waz ওয়াজ Mizanur Rahm...",
-            type = ContentType.VIDEO,
-            duration = "12:15",
-            publishedTimeAgo = "230 days ago",
-            views = 2,
-            likes = 0,
-            thumbnailTitle = "ওয়াজ মিজানুর রহমান"
-        ),
-        VideoItem(
-            id = "c_vid_3",
-            title = "UNOWAY - Swervin' [No C...",
-            type = ContentType.VIDEO,
-            duration = "3:03",
-            publishedTimeAgo = "240 days ago",
-            views = 51,
-            likes = 2,
-            thumbnailTitle = "SWERVIN"
-        ),
-        VideoItem(
-            id = "c_vid_4",
-            title = "Kun Anta (كن أنت) - Slowe...",
-            type = ContentType.VIDEO,
-            duration = "4:40",
-            publishedTimeAgo = "250 days ago",
-            views = 27,
-            likes = 2,
-            thumbnailTitle = "كن أنت Slowed"
+    // Content tab lists (reactive)
+    var contentVideos by mutableStateOf(
+        listOf(
+            VideoItem(
+                id = "c_vid_1",
+                title = "#eidkobhoga2026 #eid #...",
+                type = ContentType.VIDEO,
+                duration = "0:27",
+                publishedTimeAgo = "217 days ago",
+                views = 1,
+                likes = 0,
+                thumbnailTitle = "सऊदी से आ गई बड़ी खबर\nचाँद हुआ या नहीं?\n2026"
+            ),
+            VideoItem(
+                id = "c_vid_2",
+                title = "Waz ওয়াজ Mizanur Rahm...",
+                type = ContentType.VIDEO,
+                duration = "12:15",
+                publishedTimeAgo = "230 days ago",
+                views = 2,
+                likes = 0,
+                thumbnailTitle = "ওয়াজ মিজানুর রহমান"
+            ),
+            VideoItem(
+                id = "c_vid_3",
+                title = "UNOWAY - Swervin' [No C...",
+                type = ContentType.VIDEO,
+                duration = "3:03",
+                publishedTimeAgo = "240 days ago",
+                views = 51,
+                likes = 2,
+                thumbnailTitle = "SWERVIN"
+            ),
+            VideoItem(
+                id = "c_vid_4",
+                title = "Kun Anta (كن أنت) - Slowe...",
+                type = ContentType.VIDEO,
+                duration = "4:40",
+                publishedTimeAgo = "250 days ago",
+                views = 27,
+                likes = 2,
+                thumbnailTitle = "كن أنت Slowed"
+            )
         )
     )
 
-    val contentShorts = listOf(
-        VideoItem(
-            id = "s_1",
-            title = "#unfrezzmyacc...",
-            type = ContentType.SHORT,
-            duration = "0:15",
-            publishedTimeAgo = "177 days ago",
-            views = 2,
-            likes = 0,
-            thumbnailTitle = "Boy in Red"
-        ),
-        VideoItem(
-            id = "s_2",
-            title = "26 March 2026",
-            type = ContentType.SHORT,
-            duration = "0:12",
-            publishedTimeAgo = "209 days ago",
-            views = 6,
-            likes = 0,
-            thumbnailTitle = "Striped Tee"
-        ),
-        VideoItem(
-            id = "s_3",
-            title = "#Gaming#gami...",
-            type = ContentType.SHORT,
-            duration = "0:30",
-            publishedTimeAgo = "150 days ago",
-            views = 8,
-            likes = 0,
-            thumbnailTitle = "White Pigeon Green Parrot"
-        ),
-        VideoItem(
-            id = "s_4",
-            title = "#Gaming#gami...",
-            type = ContentType.SHORT,
-            duration = "0:25",
-            publishedTimeAgo = "140 days ago",
-            views = 4,
-            likes = 0,
-            thumbnailTitle = "Pigeon on Train Track"
-        ),
-        VideoItem(
-            id = "s_5",
-            title = "#Gaming#ga...",
-            type = ContentType.SHORT,
-            duration = "0:20",
-            publishedTimeAgo = "130 days ago",
-            views = 5,
-            likes = 0,
-            thumbnailTitle = "Flying White Rabbit"
+    var contentShorts by mutableStateOf(
+        listOf(
+            VideoItem(
+                id = "s_1",
+                title = "#unfrezzmyacc...",
+                type = ContentType.SHORT,
+                duration = "0:15",
+                publishedTimeAgo = "177 days ago",
+                views = 2,
+                likes = 0,
+                thumbnailTitle = "Boy in Red"
+            ),
+            VideoItem(
+                id = "s_2",
+                title = "26 March 2026",
+                type = ContentType.SHORT,
+                duration = "0:12",
+                publishedTimeAgo = "209 days ago",
+                views = 6,
+                likes = 0,
+                thumbnailTitle = "Striped Tee"
+            ),
+            VideoItem(
+                id = "s_3",
+                title = "#Gaming#gami...",
+                type = ContentType.SHORT,
+                duration = "0:30",
+                publishedTimeAgo = "150 days ago",
+                views = 8,
+                likes = 0,
+                thumbnailTitle = "White Pigeon Green Parrot"
+            ),
+            VideoItem(
+                id = "s_4",
+                title = "#Gaming#gami...",
+                type = ContentType.SHORT,
+                duration = "0:25",
+                publishedTimeAgo = "140 days ago",
+                views = 4,
+                likes = 0,
+                thumbnailTitle = "Pigeon on Train Track"
+            ),
+            VideoItem(
+                id = "s_5",
+                title = "#Gaming#ga...",
+                type = ContentType.SHORT,
+                duration = "0:20",
+                publishedTimeAgo = "130 days ago",
+                views = 5,
+                likes = 0,
+                thumbnailTitle = "Flying White Rabbit"
+            )
         )
     )
 
-    val contentLiveStreams = listOf(
-        VideoItem(
-            id = "l_1",
-            title = "free fire live",
-            type = ContentType.LIVE,
-            duration = "12:08",
-            publishedTimeAgo = "300 days ago",
-            views = 1,
-            likes = 0,
-            thumbnailTitle = "FF LIVE"
-        ),
-        VideoItem(
-            id = "l_2",
-            title = "Free Fire Chalenge Custom...",
-            type = ContentType.LIVE,
-            duration = "16:04",
-            publishedTimeAgo = "310 days ago",
-            views = 3,
-            likes = 0,
-            thumbnailTitle = "AJJU BHAI VS AMIT BHAI"
+    var contentLiveStreams by mutableStateOf(
+        listOf(
+            VideoItem(
+                id = "l_1",
+                title = "free fire live",
+                type = ContentType.LIVE,
+                duration = "12:08",
+                publishedTimeAgo = "300 days ago",
+                views = 1,
+                likes = 0,
+                thumbnailTitle = "FF LIVE"
+            ),
+            VideoItem(
+                id = "l_2",
+                title = "Free Fire Chalenge Custom...",
+                type = ContentType.LIVE,
+                duration = "16:04",
+                publishedTimeAgo = "310 days ago",
+                views = 3,
+                likes = 0,
+                thumbnailTitle = "AJJU BHAI VS AMIT BHAI"
+            )
         )
     )
 
-    // Analytics: Overview Tab (matching video recording)
-    val overviewViewsMetric = MetricCardData(
-        title = "Views",
-        value = "812",
-        subtitle = "612 more than usual",
-        isPositive = true,
-        showArrow = true,
-        trendData = listOf(30f, 32f, 40f, 62f, 54f, 48f, 40f, 62f, 45f, 25f, 28f, 20f, 26f, 24f, 18f, 22f, 20f, 32f, 20f, 25f, 28f),
-        yMinLabel = "0",
-        yMidLabel = "30",
-        yMaxLabel = "90",
-        startDateLabel = "24 Sept",
-        endDateLabel = "21 Oct"
+    // Analytics: Overview Tab (reactive)
+    var overviewViewsMetric by mutableStateOf(
+        MetricCardData(
+            title = "Views",
+            value = "812",
+            subtitle = "612 more than usual",
+            isPositive = true,
+            showArrow = true,
+            trendData = listOf(30f, 32f, 40f, 62f, 54f, 48f, 40f, 62f, 45f, 25f, 28f, 20f, 26f, 24f, 18f, 22f, 20f, 32f, 20f, 25f, 28f),
+            yMinLabel = "0",
+            yMidLabel = "30",
+            yMaxLabel = "90",
+            startDateLabel = "24 Sept",
+            endDateLabel = "21 Oct"
+        )
     )
 
-    val overviewWatchTimeMetric = MetricCardData(
-        title = "Watch time (hours)",
-        value = "1.8",
-        subtitle = "About the same as usual",
-        isPositive = true,
-        showArrow = false,
-        isCheckmark = true,
-        trendData = listOf(0.02f, 0.05f, 0.08f, 0.06f, 0.07f, 0.04f, 0.09f, 0.07f, 0.03f, 0.03f, 0.04f, 0.06f, 0.02f, 0.01f, 0.03f, 0.02f, 0.04f, 0.03f, 0.05f, 0.04f),
-        yMinLabel = "0.0",
-        yMidLabel = "",
-        yMaxLabel = "0.1",
-        startDateLabel = "24 Sept",
-        endDateLabel = "21 Oct"
+    var overviewWatchTimeMetric by mutableStateOf(
+        MetricCardData(
+            title = "Watch time (hours)",
+            value = "1.8",
+            subtitle = "About the same as usual",
+            isPositive = true,
+            showArrow = false,
+            isCheckmark = true,
+            trendData = listOf(0.02f, 0.05f, 0.08f, 0.06f, 0.07f, 0.04f, 0.09f, 0.07f, 0.03f, 0.03f, 0.04f, 0.06f, 0.02f, 0.01f, 0.03f, 0.02f, 0.04f, 0.03f, 0.05f, 0.04f),
+            yMinLabel = "0.0",
+            yMidLabel = "",
+            yMaxLabel = "0.1",
+            startDateLabel = "24 Sept",
+            endDateLabel = "21 Oct"
+        )
     )
 
-    val overviewSubscribersMetric = MetricCardData(
-        title = "Subscribers",
-        value = "-2",
-        subtitle = "60% more than previous 28 days",
-        isPositive = true,
-        showArrow = true,
-        trendData = listOf(0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, -1f, 0f, -1f, 0f, 0f, 0f, 0f),
-        yMinLabel = "-3",
-        yMidLabel = "-1",
-        yMaxLabel = "0",
-        startDateLabel = "24 Sept",
-        endDateLabel = "21 Oct"
+    var overviewSubscribersMetric by mutableStateOf(
+        MetricCardData(
+            title = "Subscribers",
+            value = "-2",
+            subtitle = "60% more than previous 28 days",
+            isPositive = true,
+            showArrow = true,
+            trendData = listOf(0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, -1f, 0f, -1f, 0f, 0f, 0f, 0f),
+            yMinLabel = "-3",
+            yMidLabel = "-1",
+            yMaxLabel = "0",
+            startDateLabel = "24 Sept",
+            endDateLabel = "21 Oct"
+        )
     )
 
-    // Explicitly requested Estimated revenue card for the monetization-enabled fictional demo channel
-    val overviewEstimatedRevenueMetric = MetricCardData(
-        title = "Estimated revenue",
-        value = "$1,247.32",
-        subtitle = "Simulated demo data",
-        isPositive = true,
-        showArrow = true,
-        trendData = listOf(25f, 30f, 35f, 45f, 42f, 50f, 48f, 55f, 52f, 40f, 44f, 48f, 52f, 58f, 62f, 59f, 65f, 68f, 70f, 75f),
-        yMinLabel = "$0",
-        yMidLabel = "$50",
-        yMaxLabel = "$100",
-        startDateLabel = "24 Sept",
-        endDateLabel = "21 Oct",
-        isSimulatedDemo = true
+    var overviewEstimatedRevenueMetric by mutableStateOf(
+        MetricCardData(
+            title = "Estimated revenue",
+            value = "$1,247.32",
+            subtitle = "Simulated demo data",
+            isPositive = true,
+            showArrow = true,
+            trendData = listOf(25f, 30f, 35f, 45f, 42f, 50f, 48f, 55f, 52f, 40f, 44f, 48f, 52f, 58f, 62f, 59f, 65f, 68f, 70f, 75f),
+            yMinLabel = "$0",
+            yMidLabel = "$50",
+            yMaxLabel = "$100",
+            startDateLabel = "24 Sept",
+            endDateLabel = "21 Oct",
+            isSimulatedDemo = true
+        )
     )
 
     val topContentList = listOf(
@@ -449,4 +482,82 @@ object StudioRepository {
             duration = "0:59"
         )
     )
+
+    /**
+     * Synchronizes live data from Supabase PostgREST API.
+     * If offline, misconfigured, or tables do not exist yet,
+     * falls back gracefully without modifying default values.
+     */
+    suspend fun syncWithSupabase() {
+        if (isSyncing) return
+        isSyncing = true
+        lastSyncError = null
+
+        try {
+            // 1. Channel Profile
+            val profile = SupabaseClient.fetchChannelProfile()
+            if (profile != null) {
+                danielProfile = profile
+                currentProfile = profile
+                isConnectedToSupabase = true
+                Log.d(TAG, "Synced channel profile: ${profile.name}, subs: ${profile.subscribersCount}")
+            }
+
+            // 2. Dashboard 2x2 Metrics
+            val metrics = SupabaseClient.fetchDashboardMetrics()
+            if (metrics != null) {
+                dashboardViews = metrics.views
+                dashboardWatchTime = metrics.watchTime
+                dashboardSubscribers = metrics.subscribers
+                dashboardRevenue = metrics.revenue
+                dashboardPeriodLabel = metrics.periodLabel
+                isConnectedToSupabase = true
+                Log.d(TAG, "Synced dashboard metrics: views=$dashboardViews, revenue=$dashboardRevenue")
+            }
+
+            // 3. Videos & Content
+            val remoteVideos = SupabaseClient.fetchVideos()
+            if (!remoteVideos.isNullOrEmpty()) {
+                val videos = remoteVideos.filter { it.type == ContentType.VIDEO }
+                val shorts = remoteVideos.filter { it.type == ContentType.SHORT }
+                val lives = remoteVideos.filter { it.type == ContentType.LIVE }
+
+                if (videos.isNotEmpty()) contentVideos = videos
+                if (shorts.isNotEmpty()) contentShorts = shorts
+                if (lives.isNotEmpty()) contentLiveStreams = lives
+
+                // Update latest video if flagged
+                val latest = remoteVideos.find { it.isExpanded } ?: remoteVideos.firstOrNull()
+                if (latest != null) {
+                    dashboardLatestVideo = latest
+                }
+                isConnectedToSupabase = true
+                Log.d(TAG, "Synced ${remoteVideos.size} videos from Supabase")
+            }
+
+            // 4. Analytics Overview
+            val remoteAnalytics = SupabaseClient.fetchAnalyticsOverview()
+            if (!remoteAnalytics.isNullOrEmpty()) {
+                remoteAnalytics.find { it.title.equals("Views", ignoreCase = true) }?.let {
+                    overviewViewsMetric = it
+                }
+                remoteAnalytics.find { it.title.contains("Watch", ignoreCase = true) }?.let {
+                    overviewWatchTimeMetric = it
+                }
+                remoteAnalytics.find { it.title.equals("Subscribers", ignoreCase = true) }?.let {
+                    overviewSubscribersMetric = it
+                }
+                remoteAnalytics.find { it.title.contains("Revenue", ignoreCase = true) }?.let {
+                    overviewEstimatedRevenueMetric = it
+                }
+                isConnectedToSupabase = true
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Supabase synchronization error", e)
+            lastSyncError = e.message
+        } finally {
+            isSyncing = false
+        }
+    }
 }

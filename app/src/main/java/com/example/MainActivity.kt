@@ -50,6 +50,11 @@ fun StudioApp() {
 
     val colors = StudioTheme.colors
 
+    // Sync live data from Supabase in the background on app start
+    LaunchedEffect(Unit) {
+        com.example.data.StudioRepository.syncWithSupabase()
+    }
+
     // Hardware back navigation handler
     BackHandler(enabled = isAccountScreenOpen || selectedVideoForDetail != null || currentTab != StudioTab.DASHBOARD) {
         when {

@@ -121,7 +121,7 @@ fun DashboardScreen(
                         color = StudioTextWhite
                     )
                     Text(
-                        text = "Last 28 days",
+                        text = StudioRepository.dashboardPeriodLabel,
                         fontSize = 13.sp,
                         color = StudioTextMuted
                     )

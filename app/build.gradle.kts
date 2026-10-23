@@ -48,6 +48,7 @@ android {
     versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    buildConfigField("String", "SUPABASE_ANON_KEY", "\"\"")
   }
 
   // Do not remove or modify these signingConfigs. They are necessary for building, installing,
@@ -104,6 +105,7 @@ secrets {
   propertiesFileName = ".env"
   defaultPropertiesFileName = ".env.example"
   ignoreList.add("FIREBASE_APPCHECK_DEBUG_TOKEN")
+  ignoreList.add("SUPABASE_ANON_KEY")
 }
 
 googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }
