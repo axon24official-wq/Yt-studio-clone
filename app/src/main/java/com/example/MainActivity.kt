@@ -46,6 +46,8 @@ class MainActivity : ComponentActivity() {
 fun StudioApp() {
     var currentTab by remember { mutableStateOf(StudioTab.DASHBOARD) }
     var isAccountScreenOpen by remember { mutableStateOf(false) }
+    var isAdminPanelOpen by remember { mutableStateOf(false) }
+    var isAdminLoggedIn by remember { mutableStateOf(com.example.data.local.LocalAdminStore.isLoggedIn()) }
     var selectedVideoForDetail by remember { mutableStateOf<VideoItem?>(null) }
     var showCreateSheet by remember { mutableStateOf(false) }
     var showNotificationsDialog by remember { mutableStateOf(false) }
@@ -59,8 +61,9 @@ fun StudioApp() {
     }
 
     // Hardware back navigation handler
-    BackHandler(enabled = isAccountScreenOpen || selectedVideoForDetail != null || currentTab != StudioTab.DASHBOARD) {
+    BackHandler(enabled = isAdminPanelOpen || isAccountScreenOpen || selectedVideoForDetail != null || currentTab != StudioTab.DASHBOARD) {
         when {
+            isAdminPanelOpen -> isAdminPanelOpen = false
             selectedVideoForDetail != null -> selectedVideoForDetail = null
             isAccountScreenOpen -> isAccountScreenOpen = false
             currentTab != StudioTab.DASHBOARD -> currentTab = StudioTab.DASHBOARD
@@ -73,7 +76,7 @@ fun StudioApp() {
             .testTag("studio_root_scaffold"),
         containerColor = colors.background,
         topBar = {
-            if (!isAccountScreenOpen) {
+            if (!isAccountScreenOpen && !isAdminPanelOpen) {
                 StudioHeader(
                     onAvatarClick = { isAccountScreenOpen = true },
                     onCreateClick = { showCreateSheet = true },
@@ -82,7 +85,7 @@ fun StudioApp() {
             }
         },
         bottomBar = {
-            if (!isAccountScreenOpen) {
+            if (!isAccountScreenOpen && !isAdminPanelOpen) {
                 StudioBottomNav(
                     selectedTab = currentTab,
                     onTabSelected = { currentTab = it }
@@ -95,7 +98,23 @@ fun StudioApp() {
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            if (isAccountScreenOpen) {
+            if (isAdminPanelOpen) {
+                if (!isAdminLoggedIn) {
+                    com.example.ui.screens.admin.LocalAdminLoginScreen(
+                        onLoginSuccess = { isAdminLoggedIn = true },
+                        onClose = { isAdminPanelOpen = false }
+                    )
+                } else {
+                    com.example.ui.screens.admin.LocalAdminDashboardScreen(
+                        onClose = { isAdminPanelOpen = false },
+                        onLogout = {
+                            com.example.data.local.LocalAdminStore.logout()
+                            isAdminLoggedIn = false
+                            isAdminPanelOpen = false
+                        }
+                    )
+                }
+            } else if (isAccountScreenOpen) {
                 AccountScreen(
                     onBackClick = { isAccountScreenOpen = false },
                     onChannelSelected = { }
@@ -113,7 +132,9 @@ fun StudioApp() {
                         onVideoClick = { selectedVideoForDetail = it }
                     )
                     StudioTab.COMMUNITY -> CommunityScreen()
-                    StudioTab.EARN -> EarnScreen()
+                    StudioTab.EARN -> EarnScreen(
+                        onOpenAdminPanel = { isAdminPanelOpen = true }
+                    )
                 }
             }
         }

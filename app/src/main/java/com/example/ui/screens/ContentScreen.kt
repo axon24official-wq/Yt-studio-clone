@@ -329,7 +329,8 @@ private fun VideoHorizontalCard(
             duration = video.duration,
             isShort = false,
             width = 200.dp,
-            height = 112.dp
+            height = 112.dp,
+            thumbnailUri = video.thumbnailUri
         )
 
         Spacer(modifier = Modifier.height(6.dp))
@@ -402,7 +403,8 @@ private fun ShortCard(
                 title = video.title,
                 isShort = true,
                 width = 116.dp,
-                height = 168.dp
+                height = 168.dp,
+                thumbnailUri = video.thumbnailUri
             )
             Icon(
                 imageVector = Icons.Default.MoreVert,

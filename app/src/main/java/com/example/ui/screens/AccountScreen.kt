@@ -107,7 +107,17 @@ fun AccountScreen(
                             .background(Color(0xFFFFEB3B)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(text = "👦🏻", fontSize = 42.sp)
+                        val avatarUri = currentChannel.avatarUri ?: StudioRepository.danielProfile.avatarUri
+                        if (!avatarUri.isNullOrBlank()) {
+                            coil.compose.AsyncImage(
+                                model = avatarUri,
+                                contentDescription = "Profile Logo",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                            )
+                        } else {
+                            Text(text = "👦🏻", fontSize = 42.sp)
+                        }
                     }
 
                     Spacer(modifier = Modifier.width(16.dp))

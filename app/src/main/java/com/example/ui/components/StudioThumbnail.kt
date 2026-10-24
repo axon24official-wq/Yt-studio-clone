@@ -17,6 +17,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
+
 @Composable
 fun VideoThumbnailView(
     title: String,
@@ -24,6 +27,7 @@ fun VideoThumbnailView(
     isShort: Boolean = false,
     width: Dp = 120.dp,
     height: Dp = if (isShort) 160.dp else 68.dp,
+    thumbnailUri: String? = null,
     modifier: Modifier = Modifier
 ) {
     // Generate distinct background color/gradients based on title
@@ -80,16 +84,25 @@ fun VideoThumbnailView(
             .border(0.5.dp, Color(0xFFE0E0E0), RoundedCornerShape(8.dp)),
         contentAlignment = Alignment.Center
     ) {
-        // Thumbnail central badge / graphic text
-        Text(
-            text = textOverlay,
-            color = Color.White,
-            fontWeight = FontWeight.Bold,
-            fontSize = if (isShort) 14.sp else 11.sp,
-            textAlign = TextAlign.Center,
-            lineHeight = 14.sp,
-            modifier = Modifier.padding(horizontal = 4.dp)
-        )
+        if (!thumbnailUri.isNullOrBlank()) {
+            AsyncImage(
+                model = thumbnailUri,
+                contentDescription = title,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            // Thumbnail central badge / graphic text
+            Text(
+                text = textOverlay,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = if (isShort) 14.sp else 11.sp,
+                textAlign = TextAlign.Center,
+                lineHeight = 14.sp,
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+        }
 
         // Duration badge on bottom right
         if (duration.isNotEmpty()) {

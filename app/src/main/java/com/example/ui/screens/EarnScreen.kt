@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Copyright
@@ -25,6 +26,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.StudioRepository
 import com.example.ui.theme.*
 
 data class EarnPerkCard(
@@ -35,7 +37,9 @@ data class EarnPerkCard(
 )
 
 @Composable
-fun EarnScreen() {
+fun EarnScreen(
+    onOpenAdminPanel: () -> Unit = {}
+) {
     val colors = StudioTheme.colors
     val perkCards = listOf(
         EarnPerkCard(
@@ -73,15 +77,65 @@ fun EarnScreen() {
         contentPadding = PaddingValues(top = 12.dp, bottom = 40.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        // Main Heading
+        // Main Heading / Partner Status Banner
         item {
-            Text(
-                text = "Become a YouTube\npartner",
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                color = colors.textPrimary,
-                lineHeight = 34.sp
-            )
+            if (StudioRepository.isMonetized) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (colors.isDark) Color(0xFF142918) else Color(0xFFE8F5E9)
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (colors.isDark) Color(0xFF2E7D32) else Color(0xFFA5D6A7)
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF4CAF50)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("✓", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "You're a YouTube Partner",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.textPrimary
+                                )
+                                Text(
+                                    text = "Monetization: Active",
+                                    fontSize = 13.sp,
+                                    color = Color(0xFF4CAF50),
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "You're earning from Watch Page ads, Shorts Feed ads, Memberships and Supers.",
+                            fontSize = 13.sp,
+                            color = colors.textSecondary,
+                            lineHeight = 18.sp
+                        )
+                    }
+                }
+            } else {
+                Text(
+                    text = "Become a YouTube\npartner",
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textPrimary,
+                    lineHeight = 34.sp
+                )
+            }
         }
 
         // Next milestone banner
@@ -243,7 +297,7 @@ fun EarnScreen() {
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column {
-                            Text(text = "0 video uploads", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
+                            Text(text = "${StudioRepository.monetizationVideoUploads} video uploads", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
                             Text(text = "last 90 days", fontSize = 13.sp, color = colors.textSecondary)
                         }
                         Text(text = "3", fontSize = 14.sp, color = colors.textPrimary)
@@ -279,10 +333,10 @@ fun EarnScreen() {
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column {
-                            Text(text = "19 qualified watch hours", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
+                            Text(text = "${StudioRepository.monetizationWatchHours} qualified watch hours", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
                             Text(text = "last 365 days", fontSize = 13.sp, color = colors.textSecondary)
                         }
-                        Text(text = "3,000", fontSize = 14.sp, color = colors.textPrimary)
+                        Text(text = StudioRepository.monetizationRequiredWatchHours, fontSize = 14.sp, color = colors.textPrimary)
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
@@ -308,10 +362,10 @@ fun EarnScreen() {
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column {
-                            Text(text = "730 qualified Shorts views", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
+                            Text(text = "${StudioRepository.monetizationShortsViews} qualified Shorts views", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
                             Text(text = "last 90 days", fontSize = 13.sp, color = colors.textSecondary)
                         }
-                        Text(text = "30 lakh", fontSize = 14.sp, color = colors.textPrimary)
+                        Text(text = StudioRepository.monetizationRequiredShortsViews, fontSize = 14.sp, color = colors.textPrimary)
                     }
                 }
             }
@@ -534,6 +588,50 @@ fun EarnScreen() {
                     )
                     Icon(imageVector = Icons.Default.ChevronRight, contentDescription = null, tint = colors.textSecondary)
                 }
+            }
+        }
+
+        // Section: Small Admin Panel option at the bottom of the last navigation page
+        item {
+            Spacer(modifier = Modifier.height(14.dp))
+            HorizontalDivider(thickness = 0.8.dp, color = colors.divider)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable { onOpenAdminPanel() }
+                    .padding(vertical = 12.dp, horizontal = 4.dp)
+                    .testTag("open_admin_panel_button"),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AdminPanelSettings,
+                    contentDescription = "Admin Panel",
+                    tint = colors.textSecondary,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(modifier = Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Admin Panel",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = colors.textPrimary
+                    )
+                    Text(
+                        text = "Local device customizations and demo controls",
+                        fontSize = 12.sp,
+                        color = colors.textSecondary
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = colors.textSecondary,
+                    modifier = Modifier.size(18.dp)
+                )
             }
         }
     }

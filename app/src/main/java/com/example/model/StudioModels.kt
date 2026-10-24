@@ -18,7 +18,9 @@ data class VideoItem(
     val realTimeViews: Long = 0,
     val thumbnailTitle: String = "",
     val isExpanded: Boolean = false,
-    val category: String = "Entertainment"
+    val category: String = "Entertainment",
+    val description: String = "",
+    val thumbnailUri: String? = null
 )
 
 data class CommentItem(
@@ -36,7 +38,9 @@ data class ChannelProfile(
     val handle: String,
     val subscribersCount: String,
     val email: String = "creator@gmail.com",
-    val isMonetized: Boolean = true
+    val isMonetized: Boolean = true,
+    val description: String = "",
+    val avatarUri: String? = null
 )
 
 data class MetricCardData(

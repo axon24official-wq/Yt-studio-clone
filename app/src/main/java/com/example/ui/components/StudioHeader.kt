@@ -132,6 +132,7 @@ fun StudioHeader(
                 }
 
                 // Channel Avatar (Circular orange avatar on the right)
+                val avatarUri = com.example.data.StudioRepository.danielProfile.avatarUri
                 Box(
                     modifier = Modifier
                         .size(30.dp)
@@ -143,7 +144,16 @@ fun StudioHeader(
                         )
                         .clickable(onClick = onAvatarClick)
                         .testTag("channel_avatar_header")
-                )
+                ) {
+                    if (!avatarUri.isNullOrBlank()) {
+                        coil.compose.AsyncImage(
+                            model = avatarUri,
+                            contentDescription = "Avatar",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                        )
+                    }
+                }
             }
         }
 

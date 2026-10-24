@@ -27,10 +27,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.example.data.StudioRepository
 import com.example.model.VideoItem
 import com.example.ui.components.MetricIndicatorBadge
@@ -73,7 +75,16 @@ fun DashboardScreen(
                             )
                         )
                         .testTag("channel_summary_avatar")
-                )
+                ) {
+                    if (!profile.avatarUri.isNullOrBlank()) {
+                        AsyncImage(
+                            model = profile.avatarUri,
+                            contentDescription = "Avatar",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                }
 
                 Spacer(modifier = Modifier.width(18.dp))
 
@@ -208,10 +219,11 @@ fun DashboardScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         VideoThumbnailView(
-                            title = "POV",
+                            title = video.title,
                             isShort = false,
                             width = 78.dp,
-                            height = 50.dp
+                            height = 50.dp,
+                            thumbnailUri = video.thumbnailUri
                         )
 
                         Spacer(modifier = Modifier.width(14.dp))

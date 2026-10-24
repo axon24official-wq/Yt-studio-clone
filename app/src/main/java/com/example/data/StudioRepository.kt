@@ -51,6 +51,14 @@ object StudioRepository {
     var dashboardRevenue by mutableStateOf("$0")
     var dashboardPeriodLabel by mutableStateOf("Last 28 days")
 
+    // Monetization States (reactive)
+    var isMonetized by mutableStateOf(true)
+    var monetizationWatchHours by mutableStateOf("3,140")
+    var monetizationRequiredWatchHours by mutableStateOf("3,000")
+    var monetizationShortsViews by mutableStateOf("3.2M")
+    var monetizationRequiredShortsViews by mutableStateOf("3.0M")
+    var monetizationVideoUploads by mutableStateOf("5")
+
     // Sync State
     var isSyncing by mutableStateOf(false)
     var isConnectedToSupabase by mutableStateOf(false)
@@ -508,8 +516,14 @@ object StudioRepository {
      */
     fun init(context: Context) {
         val app = context.applicationContext
+        com.example.data.local.LocalAdminStore.init(app)
         val p = app.getSharedPreferences("studio_data_cache", Context.MODE_PRIVATE)
         cachePrefs = p
+
+        if (com.example.data.local.LocalAdminStore.hasCustomLocalData()) {
+            Log.d(TAG, "Local admin customized data loaded; active on device.")
+            return
+        }
 
         // Restore cached Channel Profile if available
         val cachedName = p.getString("profile_name", null)
@@ -537,6 +551,22 @@ object StudioRepository {
             dashboardPeriodLabel = p.getString("metrics_period", dashboardPeriodLabel) ?: dashboardPeriodLabel
             Log.d(TAG, "Restored cached metrics: views=$dashboardViews, revenue=$dashboardRevenue")
         }
+    }
+
+    fun resetToDefaults() {
+        danielProfile = defaultDanielProfile
+        currentProfile = defaultDanielProfile
+        dashboardViews = "887.7K"
+        dashboardWatchTime = "66.2K"
+        dashboardSubscribers = "+39.0K"
+        dashboardRevenue = "$0"
+        dashboardPeriodLabel = "Last 28 days"
+        isMonetized = true
+        monetizationWatchHours = "3,140"
+        monetizationRequiredWatchHours = "3,000"
+        monetizationShortsViews = "3.2M"
+        monetizationRequiredShortsViews = "3.0M"
+        monetizationVideoUploads = "5"
     }
 
     private fun saveProfileToCache(profile: ChannelProfile) {
@@ -692,6 +722,10 @@ object StudioRepository {
         startRealtimeListener()
 
         if (isSyncing) return
+        if (com.example.data.local.LocalAdminStore.hasCustomLocalData()) {
+            Log.d(TAG, "Local custom admin data is active on device; preserving local overrides.")
+            return
+        }
         isSyncing = true
         lastSyncError = null
 
