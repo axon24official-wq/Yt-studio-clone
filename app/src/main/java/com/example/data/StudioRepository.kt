@@ -1,5 +1,7 @@
 package com.example.data
 
+import android.content.Context
+import android.content.SharedPreferences
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -488,6 +490,75 @@ object StudioRepository {
     )
 
     private var realtimeChannel: SupabaseRealtimeChannel? = null
+    private var cachePrefs: SharedPreferences? = null
+
+    var lastSyncTime by mutableStateOf<Long?>(null)
+
+    val syncStatusMessage: String
+        get() = when {
+            isConnectedToSupabase && lastSyncError == null -> "Connected to Supabase (Live)"
+            lastSyncError != null -> "Sync error: $lastSyncError"
+            SupabaseClient.anonKey.isBlank() -> "Supabase Anon Key is not set. Open Settings to connect."
+            else -> "Connecting to Supabase..."
+        }
+
+    /**
+     * Initializes repository with context to load cached data from device storage.
+     * Prevents data from resetting to hardcoded defaults across app restarts.
+     */
+    fun init(context: Context) {
+        val app = context.applicationContext
+        val p = app.getSharedPreferences("studio_data_cache", Context.MODE_PRIVATE)
+        cachePrefs = p
+
+        // Restore cached Channel Profile if available
+        val cachedName = p.getString("profile_name", null)
+        if (!cachedName.isNullOrBlank()) {
+            val restoredProfile = ChannelProfile(
+                id = p.getString("profile_id", "channel_daniel") ?: "channel_daniel",
+                name = cachedName,
+                handle = p.getString("profile_handle", "@danieldalen") ?: "@danieldalen",
+                subscribersCount = p.getString("profile_subs", "48,237") ?: "48,237",
+                email = p.getString("profile_email", "creator@gmail.com") ?: "creator@gmail.com",
+                isMonetized = p.getBoolean("profile_monetized", true)
+            )
+            danielProfile = restoredProfile
+            currentProfile = restoredProfile
+            Log.d(TAG, "Restored cached channel profile: ${restoredProfile.name}, subs=${restoredProfile.subscribersCount}")
+        }
+
+        // Restore cached Dashboard 2x2 Metrics
+        val cachedViews = p.getString("metrics_views", null)
+        if (!cachedViews.isNullOrBlank()) {
+            dashboardViews = cachedViews
+            dashboardWatchTime = p.getString("metrics_watch_time", dashboardWatchTime) ?: dashboardWatchTime
+            dashboardSubscribers = p.getString("metrics_subscribers", dashboardSubscribers) ?: dashboardSubscribers
+            dashboardRevenue = p.getString("metrics_revenue", dashboardRevenue) ?: dashboardRevenue
+            dashboardPeriodLabel = p.getString("metrics_period", dashboardPeriodLabel) ?: dashboardPeriodLabel
+            Log.d(TAG, "Restored cached metrics: views=$dashboardViews, revenue=$dashboardRevenue")
+        }
+    }
+
+    private fun saveProfileToCache(profile: ChannelProfile) {
+        cachePrefs?.edit()
+            ?.putString("profile_id", profile.id)
+            ?.putString("profile_name", profile.name)
+            ?.putString("profile_handle", profile.handle)
+            ?.putString("profile_subs", profile.subscribersCount)
+            ?.putString("profile_email", profile.email)
+            ?.putBoolean("profile_monetized", profile.isMonetized)
+            ?.apply()
+    }
+
+    private fun saveMetricsToCache(views: String, watchTime: String, subs: String, rev: String, period: String) {
+        cachePrefs?.edit()
+            ?.putString("metrics_views", views)
+            ?.putString("metrics_watch_time", watchTime)
+            ?.putString("metrics_subscribers", subs)
+            ?.putString("metrics_revenue", rev)
+            ?.putString("metrics_period", period)
+            ?.apply()
+    }
 
     /**
      * Initializes Supabase Realtime WebSocket listeners using the requested pattern:
@@ -516,6 +587,7 @@ object StudioRepository {
                 Log.d(TAG, "Supabase Realtime Channel Status: $status")
                 if (status == "SUBSCRIBED") {
                     isConnectedToSupabase = true
+                    lastSyncError = null
                 }
             }
     }
@@ -533,6 +605,7 @@ object StudioRepository {
             danielProfile = updated
             currentProfile = updated
             isConnectedToSupabase = true
+            saveProfileToCache(updated)
             Log.d(TAG, "Realtime update: channel_profile updated -> ${updated.name}, subs=${updated.subscribersCount}, monetized=${updated.isMonetized}")
         }
     }
@@ -545,6 +618,7 @@ object StudioRepository {
             if (record.has("revenue")) dashboardRevenue = record.optString("revenue", dashboardRevenue)
             if (record.has("period_label")) dashboardPeriodLabel = record.optString("period_label", dashboardPeriodLabel)
             isConnectedToSupabase = true
+            saveMetricsToCache(dashboardViews, dashboardWatchTime, dashboardSubscribers, dashboardRevenue, dashboardPeriodLabel)
             Log.d(TAG, "Realtime update: dashboard_metrics updated -> views=$dashboardViews, revenue=$dashboardRevenue")
         }
     }
@@ -628,6 +702,7 @@ object StudioRepository {
                 danielProfile = profile
                 currentProfile = profile
                 isConnectedToSupabase = true
+                saveProfileToCache(profile)
                 Log.d(TAG, "Synced channel profile: ${profile.name}, subs: ${profile.subscribersCount}")
             }
 
@@ -640,6 +715,7 @@ object StudioRepository {
                 dashboardRevenue = metrics.revenue
                 dashboardPeriodLabel = metrics.periodLabel
                 isConnectedToSupabase = true
+                saveMetricsToCache(dashboardViews, dashboardWatchTime, dashboardSubscribers, dashboardRevenue, dashboardPeriodLabel)
                 Log.d(TAG, "Synced dashboard metrics: views=$dashboardViews, revenue=$dashboardRevenue")
             }
 

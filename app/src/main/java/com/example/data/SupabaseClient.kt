@@ -1,5 +1,7 @@
 package com.example.data
 
+import android.content.Context
+import android.content.SharedPreferences
 import android.util.Log
 import com.example.BuildConfig
 import com.example.model.*
@@ -13,31 +15,96 @@ import java.util.concurrent.TimeUnit
 
 object SupabaseClient {
     private const val TAG = "SupabaseClient"
-    const val SUPABASE_URL = "https://zzswtrpdjllmagjjmxbx.supabase.co"
+    const val DEFAULT_SUPABASE_URL = "https://zzswtrpdjllmagjjmxbx.supabase.co"
+    private const val PREFS_NAME = "studio_supabase_prefs"
+    private const val KEY_ANON_KEY = "supabase_anon_key"
+    private const val KEY_URL = "supabase_url"
 
     private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
         .build()
 
-    // Resolves publishable anon key from BuildConfig (.env) or runtime override
+    private var appContext: Context? = null
+    private var prefs: SharedPreferences? = null
+
+    var runtimeUrlOverride: String = ""
     var runtimeAnonKeyOverride: String = ""
         set(value) {
-            field = value
-            if (value.isNotBlank()) {
+            field = value.trim()
+            if (field.isNotBlank()) {
                 SupabaseRealtimeClient.connect()
             }
         }
 
+    const val SUPABASE_URL = DEFAULT_SUPABASE_URL
+
+    val supabaseUrl: String
+        get() {
+            if (runtimeUrlOverride.isNotBlank()) return runtimeUrlOverride
+            val savedUrl = prefs?.getString(KEY_URL, "") ?: ""
+            if (savedUrl.isNotBlank()) return savedUrl
+            return DEFAULT_SUPABASE_URL
+        }
+
+    val projectUrl: String
+        get() = supabaseUrl
+
     val anonKey: String
         get() {
             if (runtimeAnonKeyOverride.isNotBlank()) return runtimeAnonKeyOverride
+            val savedKey = prefs?.getString(KEY_ANON_KEY, "") ?: ""
+            if (savedKey.isNotBlank()) return savedKey
             return try {
                 BuildConfig.SUPABASE_ANON_KEY
             } catch (_: Exception) {
                 ""
             }
         }
+
+    /**
+     * Initializes SupabaseClient with application context to read/write persistent settings.
+     */
+    fun init(context: Context) {
+        val app = context.applicationContext
+        appContext = app
+        prefs = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+        val savedKey = prefs?.getString(KEY_ANON_KEY, "") ?: ""
+        if (savedKey.isNotBlank()) {
+            runtimeAnonKeyOverride = savedKey
+            Log.d(TAG, "Loaded saved Supabase publishable key from SharedPreferences (${savedKey.take(10)}...)")
+        }
+
+        val savedUrl = prefs?.getString(KEY_URL, "") ?: ""
+        if (savedUrl.isNotBlank()) {
+            runtimeUrlOverride = savedUrl
+            Log.d(TAG, "Loaded saved Supabase URL: $savedUrl")
+        }
+    }
+
+    /**
+     * Saves user-entered publishable key and optional URL persistently on device.
+     */
+    fun setCredentials(key: String, url: String? = null, context: Context? = null) {
+        val trimmedKey = key.trim()
+        val trimmedUrl = (url?.trim() ?: "").ifBlank { DEFAULT_SUPABASE_URL }
+
+        runtimeAnonKeyOverride = trimmedKey
+        runtimeUrlOverride = trimmedUrl
+
+        val targetContext = context ?: appContext
+        targetContext?.let {
+            val p = it.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            p.edit()
+                .putString(KEY_ANON_KEY, trimmedKey)
+                .putString(KEY_URL, trimmedUrl)
+                .apply()
+            prefs = p
+        }
+
+        Log.d(TAG, "Supabase credentials updated and saved to SharedPreferences. Key length: ${trimmedKey.length}")
+    }
 
     /**
      * Creates or returns a Supabase Realtime channel for WebSocket postgres_changes listeners.
@@ -48,30 +115,44 @@ object SupabaseClient {
 
     suspend fun fetchChannelProfile(): ChannelProfile? = withContext(Dispatchers.IO) {
         val key = anonKey
-        if (key.isBlank()) return@withContext null
+        val urlBase = supabaseUrl
+
+        if (key.isBlank()) {
+            val msg = "Supabase publishable anon key is blank. Please configure SUPABASE_ANON_KEY in Account > Settings or .env file."
+            Log.w(TAG, msg)
+            StudioRepository.lastSyncError = "Missing publishable key. Open Account > Settings to connect."
+            return@withContext null
+        }
 
         try {
-            val url = "$SUPABASE_URL/rest/v1/channel_profile?select=*"
+            val endpoint = "$urlBase/rest/v1/channel_profile?select=*"
             val request = Request.Builder()
-                .url(url)
+                .url(endpoint)
                 .addHeader("apikey", key)
                 .addHeader("Authorization", "Bearer $key")
                 .addHeader("Accept", "application/json")
                 .get()
                 .build()
 
+            Log.d(TAG, "Fetching channel_profile from: $endpoint")
             val response = httpClient.newCall(request).execute()
+            val body = response.body?.string() ?: ""
+
             if (!response.isSuccessful) {
-                Log.w(TAG, "fetchChannelProfile failed with HTTP ${response.code}")
+                val err = "fetchChannelProfile failed: HTTP ${response.code} -> $body"
+                Log.e(TAG, err)
+                StudioRepository.lastSyncError = "HTTP ${response.code}: $body"
                 return@withContext null
             }
 
-            val body = response.body?.string() ?: return@withContext null
             val array = JSONArray(body)
-            if (array.length() == 0) return@withContext null
+            if (array.length() == 0) {
+                Log.w(TAG, "fetchChannelProfile returned 0 rows from database")
+                return@withContext null
+            }
 
             val obj = array.getJSONObject(0)
-            return@withContext ChannelProfile(
+            val profile = ChannelProfile(
                 id = obj.optString("id", "channel_daniel"),
                 name = obj.optString("name", "Daniel Dalen"),
                 handle = obj.optString("handle", "@danieldalen"),
@@ -79,20 +160,30 @@ object SupabaseClient {
                 email = obj.optString("email", "creator@gmail.com"),
                 isMonetized = obj.optBoolean("is_monetized", true)
             )
+
+            Log.d(TAG, "Successfully fetched channel_profile: ${profile.name}, subs=${profile.subscribersCount}, monetized=${profile.isMonetized}")
+            return@withContext profile
         } catch (e: Exception) {
-            Log.e(TAG, "Error fetching channel profile from Supabase", e)
+            val err = "Network error fetching channel_profile: ${e.message}"
+            Log.e(TAG, err, e)
+            StudioRepository.lastSyncError = err
             null
         }
     }
 
     suspend fun fetchDashboardMetrics(): DashboardMetricsResponse? = withContext(Dispatchers.IO) {
         val key = anonKey
-        if (key.isBlank()) return@withContext null
+        val urlBase = supabaseUrl
+
+        if (key.isBlank()) {
+            Log.w(TAG, "Cannot fetch dashboard_metrics: anonKey is blank")
+            return@withContext null
+        }
 
         try {
-            val url = "$SUPABASE_URL/rest/v1/dashboard_metrics?select=*"
+            val endpoint = "$urlBase/rest/v1/dashboard_metrics?select=*"
             val request = Request.Builder()
-                .url(url)
+                .url(endpoint)
                 .addHeader("apikey", key)
                 .addHeader("Authorization", "Bearer $key")
                 .addHeader("Accept", "application/json")
@@ -100,14 +191,22 @@ object SupabaseClient {
                 .build()
 
             val response = httpClient.newCall(request).execute()
-            if (!response.isSuccessful) return@withContext null
+            val body = response.body?.string() ?: ""
 
-            val body = response.body?.string() ?: return@withContext null
+            if (!response.isSuccessful) {
+                Log.e(TAG, "fetchDashboardMetrics failed: HTTP ${response.code} -> $body")
+                StudioRepository.lastSyncError = "HTTP ${response.code}: $body"
+                return@withContext null
+            }
+
             val array = JSONArray(body)
-            if (array.length() == 0) return@withContext null
+            if (array.length() == 0) {
+                Log.w(TAG, "fetchDashboardMetrics returned 0 rows")
+                return@withContext null
+            }
 
             val obj = array.getJSONObject(0)
-            return@withContext DashboardMetricsResponse(
+            val metrics = DashboardMetricsResponse(
                 views = obj.optString("views", "887.7K"),
                 watchTime = obj.optString("watch_time", "66.2K"),
                 subscribers = obj.optString("subscribers", "+39.0K"),
@@ -118,20 +217,26 @@ object SupabaseClient {
                 revenueIsUp = obj.optBoolean("revenue_is_up", true),
                 periodLabel = obj.optString("period_label", "Last 28 days")
             )
+
+            Log.d(TAG, "Successfully fetched dashboard_metrics: views=${metrics.views}, revenue=${metrics.revenue}")
+            return@withContext metrics
         } catch (e: Exception) {
-            Log.e(TAG, "Error fetching dashboard metrics from Supabase", e)
+            Log.e(TAG, "Network error fetching dashboard_metrics", e)
+            StudioRepository.lastSyncError = e.message
             null
         }
     }
 
     suspend fun fetchVideos(): List<VideoItem>? = withContext(Dispatchers.IO) {
         val key = anonKey
+        val urlBase = supabaseUrl
+
         if (key.isBlank()) return@withContext null
 
         try {
-            val url = "$SUPABASE_URL/rest/v1/videos?select=*&order=display_order.asc"
+            val endpoint = "$urlBase/rest/v1/videos?select=*&order=display_order.asc"
             val request = Request.Builder()
-                .url(url)
+                .url(endpoint)
                 .addHeader("apikey", key)
                 .addHeader("Authorization", "Bearer $key")
                 .addHeader("Accept", "application/json")
@@ -139,9 +244,13 @@ object SupabaseClient {
                 .build()
 
             val response = httpClient.newCall(request).execute()
-            if (!response.isSuccessful) return@withContext null
+            val body = response.body?.string() ?: ""
 
-            val body = response.body?.string() ?: return@withContext null
+            if (!response.isSuccessful) {
+                Log.e(TAG, "fetchVideos failed: HTTP ${response.code} -> $body")
+                return@withContext null
+            }
+
             val array = JSONArray(body)
             val result = mutableListOf<VideoItem>()
 
@@ -173,21 +282,25 @@ object SupabaseClient {
                     )
                 )
             }
+
+            Log.d(TAG, "Successfully fetched ${result.size} videos from database")
             return@withContext result
         } catch (e: Exception) {
-            Log.e(TAG, "Error fetching videos from Supabase", e)
+            Log.e(TAG, "Network error fetching videos", e)
             null
         }
     }
 
     suspend fun fetchAnalyticsOverview(): List<MetricCardData>? = withContext(Dispatchers.IO) {
         val key = anonKey
+        val urlBase = supabaseUrl
+
         if (key.isBlank()) return@withContext null
 
         try {
-            val url = "$SUPABASE_URL/rest/v1/analytics_overview?select=*&order=display_order.asc"
+            val endpoint = "$urlBase/rest/v1/analytics_overview?select=*&order=display_order.asc"
             val request = Request.Builder()
-                .url(url)
+                .url(endpoint)
                 .addHeader("apikey", key)
                 .addHeader("Authorization", "Bearer $key")
                 .addHeader("Accept", "application/json")
@@ -195,9 +308,13 @@ object SupabaseClient {
                 .build()
 
             val response = httpClient.newCall(request).execute()
-            if (!response.isSuccessful) return@withContext null
+            val body = response.body?.string() ?: ""
 
-            val body = response.body?.string() ?: return@withContext null
+            if (!response.isSuccessful) {
+                Log.e(TAG, "fetchAnalyticsOverview failed: HTTP ${response.code} -> $body")
+                return@withContext null
+            }
+
             val array = JSONArray(body)
             val result = mutableListOf<MetricCardData>()
 
@@ -228,9 +345,11 @@ object SupabaseClient {
                     )
                 )
             }
+
+            Log.d(TAG, "Successfully fetched ${result.size} analytics overview cards from database")
             return@withContext result
         } catch (e: Exception) {
-            Log.e(TAG, "Error fetching analytics from Supabase", e)
+            Log.e(TAG, "Network error fetching analytics overview", e)
             null
         }
     }

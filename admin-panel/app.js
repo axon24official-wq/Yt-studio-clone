@@ -589,6 +589,7 @@
     saveBtn.disabled = true;
     saveBtn.textContent = 'Saving...';
 
+    const targetId = channelData?.id || 'channel_daniel';
     const updated = {
       name: document.getElementById('channelNameInput').value.trim(),
       handle: document.getElementById('channelHandleInput').value.trim(),
@@ -600,15 +601,24 @@
     };
 
     try {
-      const { error } = await supabaseClient
+      const { data, error } = await supabaseClient
         .from('channel_profile')
-        .update(updated)
-        .eq('id', channelData?.id || 'channel_daniel');
+        .upsert({ id: targetId, ...updated })
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase write error on channel_profile:', error);
+        throw error;
+      }
 
+      if (!data || data.length === 0) {
+        throw new Error('Database write affected 0 rows. Please verify that your account has admin rights in public.admin_users.');
+      }
+
+      console.log('Channel profile saved successfully to Supabase:', data);
       showToast('Channel profile saved! Android app will update in realtime.', 'success');
-      await loadChannelProfile();
+      channelData = data[0];
+      populateChannelUI(data[0]);
     } catch (err) {
       console.error('Save channel failed:', err);
       showToast('Error saving channel: ' + err.message, 'error');
@@ -631,7 +641,9 @@
         saveBtn.disabled = true;
         saveBtn.textContent = 'Saving...';
 
+        const targetId = dashboardMetrics?.id || 'main';
         const updated = {
+          id: targetId,
           period_label: document.getElementById('metricsPeriodLabel').value.trim(),
           views: document.getElementById('viewsValInput').value.trim(),
           views_is_up: document.getElementById('viewsUpCheckbox').checked,
@@ -645,14 +657,24 @@
         };
 
         try {
-          const { error } = await supabaseClient
+          const { data, error } = await supabaseClient
             .from('dashboard_metrics')
-            .update(updated)
-            .eq('id', dashboardMetrics?.id || 'main');
+            .upsert(updated)
+            .select();
 
-          if (error) throw error;
+          if (error) {
+            console.error('Supabase write error on dashboard_metrics:', error);
+            throw error;
+          }
+
+          if (!data || data.length === 0) {
+            throw new Error('Database write affected 0 rows. Please verify that your account has admin rights in public.admin_users.');
+          }
+
+          console.log('Dashboard metrics saved successfully to Supabase:', data);
           showToast('Dashboard metrics updated in Android app!', 'success');
-          await loadDashboardMetrics();
+          dashboardMetrics = data[0];
+          populateDashboardMetricsUI(data[0]);
         } catch (err) {
           console.error('Save metrics failed:', err);
           showToast('Error updating metrics: ' + err.message, 'error');
@@ -668,20 +690,29 @@
   document.getElementById('saveMonetizationBtn').addEventListener('click', async () => {
     if (!requireAdmin()) return;
     const isMonetized = document.getElementById('monetizationBigToggle').checked;
+    const targetId = channelData?.id || 'channel_daniel';
 
     try {
-      const { error } = await supabaseClient
+      const { data, error } = await supabaseClient
         .from('channel_profile')
         .update({
           is_monetized: isMonetized,
           updated_at: new Date().toISOString()
         })
-        .eq('id', channelData?.id || 'channel_daniel');
+        .eq('id', targetId)
+        .select();
 
       if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error('Monetization update affected 0 rows. Check admin permissions.');
+      }
+
+      console.log('Monetization updated successfully in Supabase:', data);
+      channelData = data[0];
       updateMonetizationBadge(isMonetized);
       showToast(`Monetization set to ${isMonetized ? 'ACTIVE' : 'INACTIVE'}!`, 'success');
     } catch (err) {
+      console.error('Monetization update failed:', err);
       showToast('Monetization update error: ' + err.message, 'error');
     }
   });
@@ -695,18 +726,29 @@
     if (!valInput) return;
 
     try {
-      const { error } = await supabaseClient
+      const { data, error } = await supabaseClient
         .from('analytics_overview')
         .update({
           value: valInput.value.trim(),
           subtitle: subInput ? subInput.value.trim() : '',
           updated_at: new Date().toISOString()
         })
-        .eq('id', id);
+        .eq('id', id)
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error(`Save analytics metric [${id}] error:`, error);
+        throw error;
+      }
+
+      if (!data || data.length === 0) {
+        throw new Error(`Metric update for ${id} returned 0 rows. Check admin permissions.`);
+      }
+
+      console.log(`Metric [${id}] saved to Supabase:`, data);
       showToast('Metric updated in real time!', 'success');
     } catch (err) {
+      console.error('Error updating metric:', err);
       showToast('Error updating metric: ' + err.message, 'error');
     }
   };
@@ -742,15 +784,22 @@
       `Are you sure you want to delete "${video ? video.title : id}"? This will remove it from the Android app content feed.`,
       async () => {
         try {
-          const { error } = await supabaseClient
+          const { data, error } = await supabaseClient
             .from('videos')
             .delete()
-            .eq('id', id);
+            .eq('id', id)
+            .select();
 
-          if (error) throw error;
+          if (error) {
+            console.error('Delete video error:', error);
+            throw error;
+          }
+
+          console.log(`Video [${id}] deleted successfully from Supabase:`, data);
           showToast('Video deleted from database.', 'success');
           await loadVideos();
         } catch (err) {
+          console.error('Delete video failed:', err);
           showToast('Delete error: ' + err.message, 'error');
         }
       }
@@ -827,16 +876,26 @@
           .neq('id', id);
       }
 
-      const { error } = await supabaseClient
+      const { data, error } = await supabaseClient
         .from('videos')
-        .upsert(payload);
+        .upsert(payload)
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Save video error:', error);
+        throw error;
+      }
 
+      if (!data || data.length === 0) {
+        throw new Error('Video write affected 0 rows. Check admin permissions.');
+      }
+
+      console.log('Video saved successfully to Supabase:', data);
       showToast('Video saved successfully!', 'success');
       document.getElementById('videoModal').classList.add('hidden');
       await loadVideos();
     } catch (err) {
+      console.error('Save video failed:', err);
       showToast('Save video error: ' + err.message, 'error');
     }
   });

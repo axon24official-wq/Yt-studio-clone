@@ -31,6 +31,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        com.example.data.SupabaseClient.init(this)
+        com.example.data.StudioRepository.init(this)
         setContent {
             MyApplicationTheme {
                 StudioApp()

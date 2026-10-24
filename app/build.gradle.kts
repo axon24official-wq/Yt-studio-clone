@@ -48,6 +48,7 @@ android {
     versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    buildConfigField("String", "SUPABASE_URL", "\"https://zzswtrpdjllmagjjmxbx.supabase.co\"")
     buildConfigField("String", "SUPABASE_ANON_KEY", "\"\"")
   }
 
@@ -105,6 +106,7 @@ secrets {
   propertiesFileName = ".env"
   defaultPropertiesFileName = ".env.example"
   ignoreList.add("FIREBASE_APPCHECK_DEBUG_TOKEN")
+  ignoreList.add("SUPABASE_URL")
   ignoreList.add("SUPABASE_ANON_KEY")
 }
 

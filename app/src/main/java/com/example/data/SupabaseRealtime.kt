@@ -190,7 +190,7 @@ object SupabaseRealtimeClient {
         }
 
         try {
-            val baseUrl = SupabaseClient.SUPABASE_URL
+            val baseUrl = SupabaseClient.supabaseUrl
                 .replace("https://", "wss://")
                 .replace("http://", "ws://")
             val wsUrl = "$baseUrl/realtime/v1/websocket?apikey=$anonKey&vsn=1.0.0"

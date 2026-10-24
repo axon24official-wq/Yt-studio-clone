@@ -23,13 +23,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.StudioRepository
+import com.example.data.SupabaseClient
 import com.example.model.ChannelProfile
 import com.example.ui.theme.*
+import kotlinx.coroutines.launch
 
 @Composable
 fun AccountScreen(
@@ -37,7 +40,11 @@ fun AccountScreen(
     onChannelSelected: (ChannelProfile) -> Unit
 ) {
     val colors = StudioTheme.colors
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     var showSwitchDialog by remember { mutableStateOf(false) }
+    var showSettingsDialog by remember { mutableStateOf(false) }
+    var inputAnonKey by remember { mutableStateOf(SupabaseClient.anonKey) }
     var currentChannel by remember { mutableStateOf(StudioRepository.currentProfile) }
     var showSnackbarMessage by remember { mutableStateOf<String?>(null) }
 
@@ -199,7 +206,8 @@ fun AccountScreen(
                 Spacer(modifier = Modifier.height(8.dp))
                 Column(modifier = Modifier.fillMaxWidth()) {
                     MenuItemRow(icon = Icons.Default.Settings, label = "Settings") {
-                        showSnackbarMessage = "Settings"
+                        inputAnonKey = SupabaseClient.anonKey
+                        showSettingsDialog = true
                     }
                     MenuItemRow(icon = Icons.Default.AccountCircle, label = "Account status") {
                         showSnackbarMessage = "Account Status: Good Standing"
@@ -227,6 +235,108 @@ fun AccountScreen(
                 }
             }
         }
+    }
+
+    if (showSettingsDialog) {
+        AlertDialog(
+            onDismissRequest = { showSettingsDialog = false },
+            containerColor = colors.cardBackground,
+            title = {
+                Text(
+                    text = "Supabase Connection & Sync",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = colors.textPrimary
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .clip(CircleShape)
+                                .background(if (StudioRepository.isConnectedToSupabase) Color(0xFF4CAF50) else Color(0xFFF44336))
+                        )
+                        Text(
+                            text = if (StudioRepository.isConnectedToSupabase) "Connected to Supabase" else "Not Connected",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = colors.textPrimary
+                        )
+                    }
+
+                    Text(
+                        text = "Project URL:\n${SupabaseClient.projectUrl}",
+                        fontSize = 12.sp,
+                        color = colors.textSecondary
+                    )
+
+                    if (StudioRepository.lastSyncError != null) {
+                        Text(
+                            text = "Error: ${StudioRepository.lastSyncError}",
+                            fontSize = 12.sp,
+                            color = Color(0xFFFF5252)
+                        )
+                    }
+
+                    OutlinedTextField(
+                        value = inputAnonKey,
+                        onValueChange = { inputAnonKey = it },
+                        label = { Text("Publishable Anon Key", color = colors.textSecondary) },
+                        placeholder = { Text("Paste Supabase anon key", color = colors.textSecondary.copy(alpha = 0.5f)) },
+                        singleLine = false,
+                        maxLines = 3,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("supabase_anon_key_input"),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = colors.navSelected,
+                            unfocusedBorderColor = colors.divider,
+                            focusedTextColor = colors.textPrimary,
+                            unfocusedTextColor = colors.textPrimary,
+                            cursorColor = colors.navSelected
+                        )
+                    )
+
+                    Text(
+                        text = "Any changes saved in the Web Admin Panel will automatically update the Android app UI in real-time.",
+                        fontSize = 11.sp,
+                        color = colors.textSecondary
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        SupabaseClient.setCredentials(inputAnonKey.trim(), SupabaseClient.projectUrl, context)
+                        coroutineScope.launch {
+                            StudioRepository.syncWithSupabase()
+                            if (StudioRepository.isConnectedToSupabase) {
+                                showSnackbarMessage = "Successfully connected & synced with Supabase!"
+                            } else {
+                                showSnackbarMessage = "Sync status: ${StudioRepository.lastSyncError ?: "Attempted sync"}"
+                            }
+                        }
+                        showSettingsDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.navSelected)
+                ) {
+                    Text("Save & Sync", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSettingsDialog = false }) {
+                    Text("Cancel", color = colors.textSecondary)
+                }
+            }
+        )
     }
 
     if (showSwitchDialog) {
