@@ -56,7 +56,7 @@ fun StudioApp() {
     var currentTab by remember { mutableStateOf(StudioTab.DASHBOARD) }
     var isAccountScreenOpen by remember { mutableStateOf(false) }
     var isAdminPanelOpen by remember { mutableStateOf(false) }
-    var isAdminLoggedIn by remember { mutableStateOf(com.example.data.local.LocalAdminStore.isLoggedIn()) }
+    var adminFlowScreen by remember { mutableStateOf("LOGIN") }
     var selectedVideoForDetail by remember { mutableStateOf<VideoItem?>(null) }
     var showCreateSheet by remember { mutableStateOf(false) }
     var showNotificationsDialog by remember { mutableStateOf(false) }
@@ -87,6 +87,11 @@ fun StudioApp() {
     LaunchedEffect(isAdminPanelOpen) {
         if (isAdminPanelOpen) {
             LocalAdminStore.refreshSessionTick()
+            if (LocalAdminStore.isSessionActive()) {
+                adminFlowScreen = "DASHBOARD"
+            } else {
+                adminFlowScreen = "LOGIN"
+            }
         }
     }
 
@@ -160,36 +165,47 @@ fun StudioApp() {
                 .padding(innerPadding)
         ) {
             if (isAdminPanelOpen) {
-                if (!isAdminLoggedIn) {
-                    LocalAdminLoginScreen(
-                        onLoginSuccess = {
-                            isAdminLoggedIn = true
-                            LocalAdminStore.refreshSessionTick()
-                        },
-                        onClose = { isAdminPanelOpen = false }
-                    )
-                } else if (!LocalAdminStore.isSessionActive()) {
+                if (adminFlowScreen == "LOCK" && !LocalAdminStore.isSessionActive()) {
                     LocalAdminLockScreen(
                         onUnlockSuccess = {
+                            adminFlowScreen = "DASHBOARD"
                             LocalAdminStore.refreshSessionTick()
                         },
-                        onExit = { isAdminPanelOpen = false },
+                        onExit = {
+                            isAdminPanelOpen = false
+                            adminFlowScreen = "LOGIN"
+                        },
                         onLogout = {
                             LocalAdminStore.logout()
-                            isAdminLoggedIn = false
+                            adminFlowScreen = "LOGIN"
                             isAdminPanelOpen = false
+                        },
+                        onSwitchToLogin = {
+                            adminFlowScreen = "LOGIN"
                         }
                     )
-                } else {
+                } else if (LocalAdminStore.isSessionActive() || adminFlowScreen == "DASHBOARD") {
                     LocalAdminDashboardScreen(
                         onClose = { isAdminPanelOpen = false },
                         onLogout = {
                             LocalAdminStore.logout()
-                            isAdminLoggedIn = false
+                            adminFlowScreen = "LOGIN"
                             isAdminPanelOpen = false
                         },
                         onSessionExpired = {
+                            adminFlowScreen = "LOCK"
                             LocalAdminStore.refreshSessionTick()
+                        }
+                    )
+                } else {
+                    LocalAdminLoginScreen(
+                        onLoginSuccess = {
+                            adminFlowScreen = "DASHBOARD"
+                            LocalAdminStore.refreshSessionTick()
+                        },
+                        onClose = { isAdminPanelOpen = false },
+                        onSwitchToLock = {
+                            adminFlowScreen = "LOCK"
                         }
                     )
                 }

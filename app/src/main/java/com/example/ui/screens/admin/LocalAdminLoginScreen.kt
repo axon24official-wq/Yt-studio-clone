@@ -31,7 +31,8 @@ import com.example.ui.theme.StudioTheme
 @Composable
 fun LocalAdminLoginScreen(
     onLoginSuccess: () -> Unit,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    onSwitchToLock: () -> Unit = {}
 ) {
     val colors = StudioTheme.colors
     var username by remember { mutableStateOf("admin") }
@@ -245,6 +246,26 @@ fun LocalAdminLoginScreen(
                         fontSize = 11.sp,
                         color = colors.textSecondary
                     )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+                    TextButton(
+                        onClick = onSwitchToLock,
+                        modifier = Modifier.testTag("switch_to_access_key_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = null,
+                            tint = colors.navSelected,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Have an access key? Enter Key",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = colors.navSelected
+                        )
+                    }
                 }
             }
         }

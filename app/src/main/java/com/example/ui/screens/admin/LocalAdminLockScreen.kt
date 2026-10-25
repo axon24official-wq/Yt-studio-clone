@@ -38,7 +38,8 @@ import com.example.ui.theme.StudioTheme
 fun LocalAdminLockScreen(
     onUnlockSuccess: () -> Unit,
     onExit: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onSwitchToLogin: () -> Unit = {}
 ) {
     // Back navigation returns to the main app and cannot bypass the lock screen
     BackHandler { onExit() }
@@ -236,7 +237,7 @@ fun LocalAdminLockScreen(
                         }
                     }
 
-                    // Exit / Logout actions
+                    // Exit / Login / Logout actions
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -244,9 +245,18 @@ fun LocalAdminLockScreen(
                     ) {
                         TextButton(onClick = onExit) {
                             Text(
-                                text = "Exit Admin Panel",
+                                text = "Exit Admin",
                                 fontSize = 13.sp,
                                 color = colors.textSecondary
+                            )
+                        }
+
+                        TextButton(onClick = onSwitchToLogin) {
+                            Text(
+                                text = "Admin Login",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = colors.navSelected
                             )
                         }
 

@@ -74,7 +74,7 @@ fun EarnScreen(
             .background(colors.background)
             .padding(horizontal = 16.dp)
             .testTag("earn_screen"),
-        contentPadding = PaddingValues(top = 12.dp, bottom = 40.dp),
+        contentPadding = PaddingValues(top = 12.dp, bottom = 80.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
         // Main Heading / Partner Status Banner
@@ -593,46 +593,64 @@ fun EarnScreen(
 
         // Section: Small Admin Panel option at the bottom of the last navigation page
         item {
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(16.dp))
             HorizontalDivider(thickness = 0.8.dp, color = colors.divider)
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            Row(
+            Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(12.dp))
                     .clickable { onOpenAdminPanel() }
-                    .padding(vertical = 12.dp, horizontal = 4.dp)
                     .testTag("open_admin_panel_button"),
-                verticalAlignment = Alignment.CenterVertically
+                color = colors.cardBackground,
+                shape = RoundedCornerShape(12.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, colors.cardBorder)
             ) {
-                Icon(
-                    imageVector = Icons.Default.AdminPanelSettings,
-                    contentDescription = "Admin Panel",
-                    tint = colors.textSecondary,
-                    modifier = Modifier.size(22.dp)
-                )
-                Spacer(modifier = Modifier.width(14.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Admin Panel",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = colors.textPrimary
-                    )
-                    Text(
-                        text = "Local device customizations and demo controls",
-                        fontSize = 12.sp,
-                        color = colors.textSecondary
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(colors.chipBackground),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AdminPanelSettings,
+                            contentDescription = "Admin Panel",
+                            tint = colors.navSelected,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Admin Panel",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.textPrimary
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Local device customizations and demo controls",
+                            fontSize = 12.sp,
+                            color = colors.textSecondary
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = "Open Admin Panel",
+                        tint = colors.textSecondary,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
-                Icon(
-                    imageVector = Icons.Default.ChevronRight,
-                    contentDescription = null,
-                    tint = colors.textSecondary,
-                    modifier = Modifier.size(18.dp)
-                )
             }
+            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
