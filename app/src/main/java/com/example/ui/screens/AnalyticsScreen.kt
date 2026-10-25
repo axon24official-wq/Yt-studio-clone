@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -48,18 +49,19 @@ enum class AnalyticsSubTab(val label: String) {
 
 @Composable
 fun AnalyticsScreen(
-    onVideoClick: (VideoItem) -> Unit
+    onVideoClick: (VideoItem) -> Unit,
+    activeDrilldownMetric: MetricCardData? = null,
+    onDrilldownChange: (MetricCardData?) -> Unit = {}
 ) {
     var selectedSubTab by remember { mutableStateOf(AnalyticsSubTab.OVERVIEW) }
     var selectedContentFilter by remember { mutableStateOf("Shorts") }
-    var activeDrilldownMetric by remember { mutableStateOf<MetricCardData?>(null) }
 
     val colors = StudioTheme.colors
 
     if (activeDrilldownMetric != null) {
         MetricDrilldownScreen(
-            metric = activeDrilldownMetric!!,
-            onBackClick = { activeDrilldownMetric = null },
+            metric = activeDrilldownMetric,
+            onBackClick = { onDrilldownChange(null) },
             onVideoClick = onVideoClick
         )
         return
@@ -109,7 +111,7 @@ fun AnalyticsScreen(
         // SubTab content
         when (selectedSubTab) {
             AnalyticsSubTab.OVERVIEW -> OverviewTabContent(
-                onMetricClick = { activeDrilldownMetric = it },
+                onMetricClick = { onDrilldownChange(it) },
                 onVideoClick = onVideoClick
             )
             AnalyticsSubTab.CONTENT -> ContentTabAnalytics(
@@ -144,43 +146,49 @@ private fun OverviewTabContent(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Swipeable Metric Cards Pager
+        // Swipeable Metric Cards Pager - Entire Card slides horizontally as one complete unit
         item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.dp, colors.cardBorder, RoundedCornerShape(16.dp)),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = colors.cardBackground)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    HorizontalPager(
-                        state = pagerState,
-                        modifier = Modifier.fillMaxWidth()
-                    ) { page ->
-                        val metric = overviewCards[page]
-                        Box(modifier = Modifier.clickable { onMetricClick(metric) }) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxWidth(),
+                    pageSpacing = 12.dp
+                ) { page ->
+                    val metric = overviewCards[page]
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, colors.cardBorder, RoundedCornerShape(16.dp))
+                            .clickable { onMetricClick(metric) },
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = colors.cardBackground)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp)
+                        ) {
                             MetricCarouselCard(metric = metric)
                         }
                     }
+                }
 
-                    Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-                    // Pager Dots
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        repeat(overviewCards.size) { i ->
-                            val isCurrent = pagerState.currentPage == i
-                            Box(
-                                modifier = Modifier
-                                    .padding(horizontal = 3.dp)
-                                    .size(if (isCurrent) 6.dp else 5.dp)
-                                    .clip(CircleShape)
-                                    .background(if (isCurrent) colors.textPrimary else colors.textTertiary)
-                            )
-                        }
+                // Pager Dots
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    repeat(overviewCards.size) { i ->
+                        val isCurrent = pagerState.currentPage == i
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = 3.dp)
+                                .size(if (isCurrent) 6.dp else 5.dp)
+                                .clip(CircleShape)
+                                .background(if (isCurrent) colors.textPrimary else colors.textTertiary)
+                        )
                     }
                 }
             }
@@ -343,16 +351,43 @@ private fun MetricDrilldownScreen(
     onBackClick: () -> Unit,
     onVideoClick: (VideoItem) -> Unit
 ) {
+    BackHandler { onBackClick() }
+
     val colors = StudioTheme.colors
     val dateChips = listOf("7D", "28D", "90D", "365D", "Oct", "Sept", "Aug", "2026", "2025", "Lifetime")
     var selectedDateRange by remember { mutableStateOf("28D") }
 
     val headlineText = when (metric.title) {
-        "Views" -> "Your channel got ${if (selectedDateRange == "7D") "195" else if (selectedDateRange == "90D") "1,840" else "812"} views in the last ${selectedDateRange}"
-        "Watch time (hours)" -> "Your channel got ${metric.value} hours in the last ${selectedDateRange}"
-        "Subscribers" -> "Your channel was ${metric.value} in the last ${selectedDateRange}"
-        "Estimated revenue" -> "Your estimated revenue was ${metric.value} in the last ${selectedDateRange} (Simulated)"
-        else -> "${metric.title} in the last ${selectedDateRange}"
+        "Views" -> {
+            val count = when (selectedDateRange) {
+                "7D" -> "195"
+                "90D" -> "1,840"
+                "365D" -> "12.4K"
+                "Lifetime" -> "887.7K"
+                else -> metric.value.ifEmpty { "812" }
+            }
+            "Your channel got $count views in the last $selectedDateRange"
+        }
+        "Watch time (hours)" -> "Your channel got ${metric.value} hours in the last $selectedDateRange"
+        "Subscribers" -> "Your channel got ${metric.value} in the last $selectedDateRange"
+        "Estimated revenue" -> "Your estimated revenue was ${metric.value} in the last $selectedDateRange (Simulated)"
+        else -> "${metric.title} in the last $selectedDateRange"
+    }
+
+    val displayTrendData = remember(selectedDateRange, metric.trendData) {
+        when (selectedDateRange) {
+            "7D" -> if (metric.trendData.size >= 7) metric.trendData.takeLast(7) else metric.trendData
+            "90D" -> metric.trendData.map { it * 1.4f }
+            else -> metric.trendData
+        }
+    }
+
+    val (startDateLabel, endDateLabel) = when (selectedDateRange) {
+        "7D" -> "14 Oct" to "21 Oct"
+        "90D" -> "23 Jul" to "21 Oct"
+        "365D" -> "Oct 2025" to "Oct 2026"
+        "Lifetime" -> "Channel start" to "Today"
+        else -> "24 Sept" to "21 Oct"
     }
 
     val topItems: List<DrilldownContentItem> = when (metric.title) {
@@ -363,85 +398,59 @@ private fun MetricDrilldownScreen(
         else -> emptyList()
     }
 
-    Scaffold(
-        topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(colors.background)
-                    .statusBarsPadding()
-                    .padding(horizontal = 4.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBackClick) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        tint = colors.textPrimary
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colors.background)
+    ) {
+        // Date-range buttons directly below the app bar
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(start = 16.dp, top = 6.dp, end = 16.dp, bottom = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            dateChips.forEach { chip ->
+                val isSelected = chip == selectedDateRange
+                Box(
+                    modifier = Modifier
+                        .height(32.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (isSelected) (if (colors.isDark) Color.White else Color.Black) else colors.chipBackground)
+                        .border(1.dp, if (isSelected) Color.Transparent else colors.chipBorder, RoundedCornerShape(8.dp))
+                        .clickable { selectedDateRange = chip }
+                        .padding(horizontal = 14.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = chip,
+                        fontSize = 13.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        color = if (isSelected) (if (colors.isDark) Color.Black else Color.White) else colors.textPrimary
                     )
                 }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = metric.title,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = colors.textPrimary
-                )
             }
-        },
-        containerColor = colors.background
-    ) { innerPadding ->
+        }
+
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .background(colors.background)
-                .padding(innerPadding),
-            contentPadding = PaddingValues(bottom = 32.dp)
+                .background(colors.background),
+            contentPadding = PaddingValues(bottom = 24.dp)
         ) {
-            // Horizontal Date Range Selector Chips
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    dateChips.forEach { chip ->
-                        val isSelected = chip == selectedDateRange
-                        Box(
-                            modifier = Modifier
-                                .height(32.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSelected) (if (colors.isDark) Color.White else Color.Black) else colors.chipBackground)
-                                .border(1.dp, if (isSelected) Color.Transparent else colors.chipBorder, RoundedCornerShape(8.dp))
-                                .clickable { selectedDateRange = chip }
-                                .padding(horizontal = 14.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = chip,
-                                fontSize = 13.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSelected) (if (colors.isDark) Color.Black else Color.White) else colors.textPrimary
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Headline
+            // Summary text directly under the date selector (compact, no excessive vertical gap)
             item {
                 Text(
                     text = headlineText,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
                     color = colors.textPrimary,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                    modifier = Modifier.padding(start = 16.dp, top = 4.dp, end = 16.dp, bottom = 8.dp)
                 )
             }
 
-            // Big Drilldown Chart
+            // Big Drilldown Chart (compact padding and card spacing)
             item {
                 Card(
                     modifier = Modifier
@@ -451,20 +460,20 @@ private fun MetricDrilldownScreen(
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = colors.cardBackground)
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                         TrendLineChart(
-                            data = metric.trendData,
+                            data = displayTrendData,
                             lineColor = if (metric.title == "Estimated revenue") StudioGreen else Color(0xFF00ACC1),
                             yMinLabel = metric.yMinLabel,
                             yMidLabel = metric.yMidLabel,
                             yMaxLabel = metric.yMaxLabel,
-                            startDateLabel = "24 Sept",
-                            endDateLabel = "21 Oct"
+                            startDateLabel = startDateLabel,
+                            endDateLabel = endDateLabel
                         )
 
-                        Spacer(modifier = Modifier.height(14.dp))
-                        HorizontalDivider(thickness = 0.8.dp, color = colors.divider)
                         Spacer(modifier = Modifier.height(10.dp))
+                        HorizontalDivider(thickness = 0.8.dp, color = colors.divider)
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         // Metric Legend and Comparison
                         Row(
@@ -482,23 +491,23 @@ private fun MetricDrilldownScreen(
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = metric.title,
-                                    fontSize = 14.sp,
+                                    fontSize = 13.sp,
                                     color = colors.textPrimary
                                 )
                             }
                             Text(
-                                text = metric.value,
-                                fontSize = 15.sp,
+                                text = if (metric.title == "Views" && selectedDateRange == "7D") "195" else metric.value,
+                                fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = colors.textPrimary
                             )
                         }
 
                         if (metric.subtitle.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(4.dp))
+                            Spacer(modifier = Modifier.height(3.dp))
                             Text(
                                 text = if (metric.title == "Views") "612 more than the usual 140–200" else metric.subtitle,
-                                fontSize = 13.sp,
+                                fontSize = 12.sp,
                                 color = if (metric.isPositive) StudioGreen else colors.textSecondary
                             )
                         }
@@ -508,15 +517,15 @@ private fun MetricDrilldownScreen(
 
             // Top Content Breakdown List (matching recording)
             item {
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
                 Text(
                     text = "Top content",
-                    fontSize = 17.sp,
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     color = colors.textPrimary,
                     modifier = Modifier.padding(horizontal = 16.dp)
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
             }
 
             items(topItems.size) { i ->

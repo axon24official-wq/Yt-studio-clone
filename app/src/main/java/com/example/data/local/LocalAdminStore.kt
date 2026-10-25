@@ -4,6 +4,9 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
 import android.util.Log
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.example.data.StudioRepository
 import com.example.model.ContentType
 import com.example.model.MetricCardData
@@ -19,9 +22,35 @@ import java.util.Random
 object LocalAdminStore {
     private const val TAG = "LocalAdminStore"
     private const val PREFS_NAME = "yt_studio_local_admin_prefs"
+    private const val KEY_PREFS_NAME = "yt_studio_admin_key_redemptions_prefs"
 
     private const val KEY_AUTH_LOGGED_IN = "admin_logged_in"
     private const val KEY_HAS_LOCAL_DATA = "has_custom_local_data"
+
+    // Timed Session Security Keys
+    private const val KEY_SESSION_EXPIRY = "admin_session_expiry"
+    private const val KEY_SESSION_IS_UNLIMITED = "admin_session_is_unlimited"
+
+    const val DURATION_10_MINUTES_MS = 10 * 60 * 1000L
+    const val DURATION_20_MINUTES_MS = 20 * 60 * 1000L
+
+    enum class UnlockResult {
+        SUCCESS_10_MIN,
+        SUCCESS_20_MIN,
+        SUCCESS_UNLIMITED,
+        INVALID_OR_USED_KEY,
+        INVALID_PASSWORD
+    }
+
+    private var prefs: SharedPreferences? = null
+    private var keyPrefs: SharedPreferences? = null
+
+    var sessionTick by mutableStateOf(System.currentTimeMillis())
+        private set
+
+    fun refreshSessionTick() {
+        sessionTick = System.currentTimeMillis()
+    }
 
     // Profile Keys
     private const val KEY_PROFILE_NAME = "channel_name"
@@ -58,30 +87,173 @@ object LocalAdminStore {
     private const val KEY_MONETIZATION_REQ_SHORTS_VIEWS = "monetization_req_shorts_views"
     private const val KEY_MONETIZATION_VIDEO_UPLOADS = "monetization_video_uploads"
 
-    private var prefs: SharedPreferences? = null
-
     fun init(context: Context) {
-        prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val appCtx = context.applicationContext
+        prefs = appCtx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        keyPrefs = appCtx.getSharedPreferences(KEY_PREFS_NAME, Context.MODE_PRIVATE)
         loadSavedDataIntoRepository()
     }
 
-    // --- Authentication ---
+    // --- Authentication & Timed Session Management ---
 
     fun isLoggedIn(): Boolean {
         return prefs?.getBoolean(KEY_AUTH_LOGGED_IN, false) ?: false
     }
 
+    /**
+     * Initial login with admin / Admin123.
+     * On success, grants exactly 10 minutes of access.
+     */
     fun login(username: String, password: String): Boolean {
         val cleanUser = username.trim()
         val isValid = cleanUser.equals("admin", ignoreCase = true) && password == "Admin123"
         if (isValid) {
-            prefs?.edit()?.putBoolean(KEY_AUTH_LOGGED_IN, true)?.apply()
+            val expiry = System.currentTimeMillis() + DURATION_10_MINUTES_MS
+            prefs?.edit()
+                ?.putBoolean(KEY_AUTH_LOGGED_IN, true)
+                ?.putLong(KEY_SESSION_EXPIRY, expiry)
+                ?.putBoolean(KEY_SESSION_IS_UNLIMITED, false)
+                ?.apply()
+            sessionTick = System.currentTimeMillis()
+            Log.d(TAG, "Admin login successful. Initial 10-minute session started.")
         }
         return isValid
     }
 
+    /**
+     * Checks if the admin access session is currently valid and unexpired.
+     * Reactive in Compose via sessionTick.
+     */
+    fun isSessionActive(): Boolean {
+        val now = sessionTick
+        if (!isLoggedIn()) return false
+        if (isUnlimitedSession()) return true
+        val expiry = getSessionExpiry()
+        return expiry > 0L && now < expiry
+    }
+
+    fun isUnlimitedSession(): Boolean {
+        return prefs?.getBoolean(KEY_SESSION_IS_UNLIMITED, false) ?: false
+    }
+
+    fun getSessionExpiry(): Long {
+        return prefs?.getLong(KEY_SESSION_EXPIRY, 0L) ?: 0L
+    }
+
+    fun getRemainingSeconds(): Long {
+        if (!isLoggedIn()) return 0L
+        if (isUnlimitedSession()) return Long.MAX_VALUE
+        val expiry = getSessionExpiry()
+        val remaining = (expiry - sessionTick) / 1000L
+        return maxOf(0L, remaining)
+    }
+
+    fun startSession(durationMs: Long) {
+        val expiry = System.currentTimeMillis() + durationMs
+        prefs?.edit()
+            ?.putBoolean(KEY_AUTH_LOGGED_IN, true)
+            ?.putLong(KEY_SESSION_EXPIRY, expiry)
+            ?.putBoolean(KEY_SESSION_IS_UNLIMITED, false)
+            ?.apply()
+        sessionTick = System.currentTimeMillis()
+        Log.d(TAG, "Started timed session: duration = ${durationMs / 60000} mins")
+    }
+
+    fun startUnlimitedSession() {
+        prefs?.edit()
+            ?.putBoolean(KEY_AUTH_LOGGED_IN, true)
+            ?.putLong(KEY_SESSION_EXPIRY, Long.MAX_VALUE)
+            ?.putBoolean(KEY_SESSION_IS_UNLIMITED, true)
+            ?.apply()
+        sessionTick = System.currentTimeMillis()
+        Log.d(TAG, "Started unlimited session (Dkpanel).")
+    }
+
+    /**
+     * Checks if a one-time access key has already been redeemed.
+     * Persisted in a dedicated SharedPreferences file that survives
+     * timer expiry, app restarts, logouts, and demo data resets.
+     */
+    fun isKeyUsed(keyName: String): Boolean {
+        return keyPrefs?.getBoolean("key_used_$keyName", false) ?: false
+    }
+
+    /**
+     * Permanently marks a one-time key as USED upon successful redemption.
+     */
+    fun markKeyUsed(keyName: String) {
+        keyPrefs?.edit()?.putBoolean("key_used_$keyName", true)?.commit()
+        Log.d(TAG, "Access key '$keyName' marked permanently as USED.")
+    }
+
+    /**
+     * Testing utility to reset key redemptions in unit tests.
+     */
+    fun clearUsedKeysForTesting() {
+        keyPrefs?.edit()?.clear()?.commit()
+    }
+
+    /**
+     * Validates access keys when locked:
+     * - Kingpanel: one-time 10-minute access; marked USED permanently on first redemption.
+     * - Rajsingpanel: one-time 20-minute access; marked USED permanently on first redemption.
+     * - Dkpanel: permanent unlimited access; remains valid for repeated use.
+     * Returns INVALID_OR_USED_KEY if key is unknown or if a one-time key was already redeemed.
+     */
+    fun unlockWithPassword(password: String): UnlockResult {
+        val clean = password.trim()
+        return when (clean) {
+            "Kingpanel" -> {
+                if (isKeyUsed("Kingpanel")) {
+                    Log.w(TAG, "Attempted to reuse one-time key 'Kingpanel'. Rejected.")
+                    UnlockResult.INVALID_OR_USED_KEY
+                } else {
+                    markKeyUsed("Kingpanel")
+                    startSession(DURATION_10_MINUTES_MS)
+                    UnlockResult.SUCCESS_10_MIN
+                }
+            }
+            "Rajsingpanel" -> {
+                if (isKeyUsed("Rajsingpanel")) {
+                    Log.w(TAG, "Attempted to reuse one-time key 'Rajsingpanel'. Rejected.")
+                    UnlockResult.INVALID_OR_USED_KEY
+                } else {
+                    markKeyUsed("Rajsingpanel")
+                    startSession(DURATION_20_MINUTES_MS)
+                    UnlockResult.SUCCESS_20_MIN
+                }
+            }
+            "Dkpanel" -> {
+                startUnlimitedSession()
+                UnlockResult.SUCCESS_UNLIMITED
+            }
+            else -> UnlockResult.INVALID_OR_USED_KEY
+        }
+    }
+
+    /**
+     * Explicitly lock the session.
+     */
+    fun lockSession() {
+        prefs?.edit()
+            ?.putLong(KEY_SESSION_EXPIRY, 0L)
+            ?.putBoolean(KEY_SESSION_IS_UNLIMITED, false)
+            ?.apply()
+        sessionTick = System.currentTimeMillis()
+        Log.d(TAG, "Admin session locked.")
+    }
+
+    /**
+     * Complete logout: clears auth and session state.
+     */
     fun logout() {
-        prefs?.edit()?.putBoolean(KEY_AUTH_LOGGED_IN, false)?.apply()
+        prefs?.edit()
+            ?.putBoolean(KEY_AUTH_LOGGED_IN, false)
+            ?.putLong(KEY_SESSION_EXPIRY, 0L)
+            ?.putBoolean(KEY_SESSION_IS_UNLIMITED, false)
+            ?.apply()
+        sessionTick = System.currentTimeMillis()
+        Log.d(TAG, "Admin logged out.")
     }
 
     // --- Data Persistence Check ---

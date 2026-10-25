@@ -36,6 +36,8 @@ import com.example.data.local.LocalAdminStore
 import com.example.model.ContentType
 import com.example.model.VideoItem
 import com.example.ui.theme.StudioTheme
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 enum class AdminSectionTab(val label: String, val icon: String) {
     PROFILE("Profile", "👤"),
@@ -49,13 +51,34 @@ enum class AdminSectionTab(val label: String, val icon: String) {
 @Composable
 fun LocalAdminDashboardScreen(
     onClose: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onSessionExpired: () -> Unit = {}
 ) {
     val colors = StudioTheme.colors
     val context = LocalContext.current
     var currentSection by remember { mutableStateOf(AdminSectionTab.PROFILE) }
     var snackbarMessage by remember { mutableStateOf<String?>(null) }
     var showResetConfirmDialog by remember { mutableStateOf(false) }
+
+    fun checkAccessOrLock(): Boolean {
+        if (!LocalAdminStore.isSessionActive()) {
+            onSessionExpired()
+            return false
+        }
+        return true
+    }
+
+    // 1-second active session tick to keep countdown updated and lock immediately on expiry
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            delay(1000L)
+            LocalAdminStore.refreshSessionTick()
+            if (!LocalAdminStore.isSessionActive()) {
+                onSessionExpired()
+                break
+            }
+        }
+    }
 
     // --- Channel Profile State ---
     var profileName by remember { mutableStateOf(StudioRepository.danielProfile.name) }
@@ -140,7 +163,20 @@ fun LocalAdminDashboardScreen(
                 },
                 actions = {
                     IconButton(
-                        onClick = { showResetConfirmDialog = true },
+                        onClick = {
+                            LocalAdminStore.lockSession()
+                            onSessionExpired()
+                        },
+                        modifier = Modifier.testTag("admin_lock_button")
+                    ) {
+                        Icon(Icons.Default.Lock, contentDescription = "Lock", tint = colors.textSecondary)
+                    }
+                    IconButton(
+                        onClick = {
+                            if (checkAccessOrLock()) {
+                                showResetConfirmDialog = true
+                            }
+                        },
                         modifier = Modifier.testTag("admin_reset_button")
                     ) {
                         Icon(Icons.Default.RestartAlt, contentDescription = "Reset Demo Data", tint = Color(0xFFFF9800))
@@ -177,6 +213,8 @@ fun LocalAdminDashboardScreen(
                     }
                     Button(
                         onClick = {
+                            if (!checkAccessOrLock()) return@Button
+
                             // Save active section
                             when (currentSection) {
                                 AdminSectionTab.PROFILE -> {
@@ -260,6 +298,70 @@ fun LocalAdminDashboardScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            // Unobtrusive countdown / access status bar
+            val isUnlimited = LocalAdminStore.isUnlimitedSession()
+            val remainingSec = LocalAdminStore.getRemainingSeconds()
+            val minutes = remainingSec / 60
+            val seconds = remainingSec % 60
+            val timeString = String.format("%02d:%02d", minutes, seconds)
+
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("admin_session_bar"),
+                color = colors.cardBackground,
+                tonalElevation = 2.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.testTag("admin_countdown_display")
+                    ) {
+                        Icon(
+                            imageVector = if (isUnlimited) Icons.Default.LockOpen else Icons.Default.Timer,
+                            contentDescription = "Session Status",
+                            tint = if (isUnlimited) Color(0xFF4CAF50) else if (remainingSec < 60) Color(0xFFFF5252) else colors.navSelected,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (isUnlimited) "Admin Access: Unlimited" else "Admin Access: $timeString",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (!isUnlimited && remainingSec < 60) Color(0xFFFF5252) else colors.textPrimary
+                        )
+                    }
+
+                    TextButton(
+                        onClick = {
+                            LocalAdminStore.lockSession()
+                            onSessionExpired()
+                        },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        modifier = Modifier
+                            .height(28.dp)
+                            .testTag("admin_session_lock_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = "Lock Now",
+                            tint = colors.textSecondary,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Lock", fontSize = 11.sp, color = colors.textSecondary)
+                    }
+                }
+            }
+
+            HorizontalDivider(color = colors.divider, thickness = 0.5.dp)
+
             // Section Tabs Carousel
             LazyRow(
                 modifier = Modifier
@@ -272,7 +374,11 @@ fun LocalAdminDashboardScreen(
                     val isSelected = currentSection == tab
                     FilterChip(
                         selected = isSelected,
-                        onClick = { currentSection = tab },
+                        onClick = {
+                            if (checkAccessOrLock()) {
+                                currentSection = tab
+                            }
+                        },
                         label = {
                             Text(
                                 text = "${tab.icon} ${tab.label}",
@@ -972,6 +1078,10 @@ fun LocalAdminDashboardScreen(
             confirmButton = {
                 Button(
                     onClick = {
+                        if (!checkAccessOrLock()) {
+                            showVideoDialog = false
+                            return@Button
+                        }
                         val newItem = currentVideo.copy(
                             title = editTitle.ifBlank { "Untitled ${editType.name}" },
                             type = editType,
@@ -1011,6 +1121,10 @@ fun LocalAdminDashboardScreen(
             confirmButton = {
                 Button(
                     onClick = {
+                        if (!checkAccessOrLock()) {
+                            videoToDelete = null
+                            return@Button
+                        }
                         LocalAdminStore.deleteVideo(target.id, target.type == ContentType.SHORT)
                         videoToDelete = null
                         snackbarMessage = "Deleted '${target.title}'"
@@ -1043,6 +1157,10 @@ fun LocalAdminDashboardScreen(
             confirmButton = {
                 Button(
                     onClick = {
+                        if (!checkAccessOrLock()) {
+                            showResetConfirmDialog = false
+                            return@Button
+                        }
                         LocalAdminStore.resetToDefaultDemoData(context)
                         // Reset local view states
                         profileName = StudioRepository.danielProfile.name

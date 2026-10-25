@@ -8,6 +8,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.ElectricBolt
@@ -20,11 +21,19 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.data.local.LocalAdminStore
+import com.example.model.MetricCardData
 import com.example.model.VideoItem
 import com.example.ui.components.StudioBottomNav
 import com.example.ui.components.StudioHeader
 import com.example.ui.components.StudioTab
 import com.example.ui.screens.*
+import com.example.ui.screens.admin.LocalAdminDashboardScreen
+import com.example.ui.screens.admin.LocalAdminLockScreen
+import com.example.ui.screens.admin.LocalAdminLoginScreen
 import com.example.ui.theme.*
 
 class MainActivity : ComponentActivity() {
@@ -51,6 +60,7 @@ fun StudioApp() {
     var selectedVideoForDetail by remember { mutableStateOf<VideoItem?>(null) }
     var showCreateSheet by remember { mutableStateOf(false) }
     var showNotificationsDialog by remember { mutableStateOf(false) }
+    var activeAnalyticsDrilldown by remember { mutableStateOf<MetricCardData?>(null) }
 
     val colors = StudioTheme.colors
 
@@ -60,12 +70,33 @@ fun StudioApp() {
         com.example.data.StudioRepository.startRealtimeListener()
     }
 
+    // Recheck authorization whenever the app resumes from background or Admin Panel opens
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                LocalAdminStore.refreshSessionTick()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    LaunchedEffect(isAdminPanelOpen) {
+        if (isAdminPanelOpen) {
+            LocalAdminStore.refreshSessionTick()
+        }
+    }
+
     // Hardware back navigation handler
-    BackHandler(enabled = isAdminPanelOpen || isAccountScreenOpen || selectedVideoForDetail != null || currentTab != StudioTab.DASHBOARD) {
+    BackHandler(enabled = isAdminPanelOpen || isAccountScreenOpen || selectedVideoForDetail != null || activeAnalyticsDrilldown != null || currentTab != StudioTab.DASHBOARD) {
         when {
             isAdminPanelOpen -> isAdminPanelOpen = false
             selectedVideoForDetail != null -> selectedVideoForDetail = null
             isAccountScreenOpen -> isAccountScreenOpen = false
+            activeAnalyticsDrilldown != null -> activeAnalyticsDrilldown = null
             currentTab != StudioTab.DASHBOARD -> currentTab = StudioTab.DASHBOARD
         }
     }
@@ -77,18 +108,48 @@ fun StudioApp() {
         containerColor = colors.background,
         topBar = {
             if (!isAccountScreenOpen && !isAdminPanelOpen) {
-                StudioHeader(
-                    onAvatarClick = { isAccountScreenOpen = true },
-                    onCreateClick = { showCreateSheet = true },
-                    onNotificationClick = { showNotificationsDialog = true }
-                )
+                if (currentTab == StudioTab.ANALYTICS && activeAnalyticsDrilldown != null) {
+                    // Top app bar with back arrow and "Views" title
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(colors.background)
+                            .statusBarsPadding()
+                            .padding(horizontal = 4.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = { activeAnalyticsDrilldown = null }) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = colors.textPrimary
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = activeAnalyticsDrilldown!!.title,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.textPrimary
+                        )
+                    }
+                } else {
+                    StudioHeader(
+                        onAvatarClick = { isAccountScreenOpen = true },
+                        onCreateClick = { showCreateSheet = true },
+                        onNotificationClick = { showNotificationsDialog = true }
+                    )
+                }
             }
         },
         bottomBar = {
             if (!isAccountScreenOpen && !isAdminPanelOpen) {
                 StudioBottomNav(
                     selectedTab = currentTab,
-                    onTabSelected = { currentTab = it }
+                    onTabSelected = {
+                        currentTab = it
+                        activeAnalyticsDrilldown = null
+                    }
                 )
             }
         }
@@ -100,17 +161,35 @@ fun StudioApp() {
         ) {
             if (isAdminPanelOpen) {
                 if (!isAdminLoggedIn) {
-                    com.example.ui.screens.admin.LocalAdminLoginScreen(
-                        onLoginSuccess = { isAdminLoggedIn = true },
+                    LocalAdminLoginScreen(
+                        onLoginSuccess = {
+                            isAdminLoggedIn = true
+                            LocalAdminStore.refreshSessionTick()
+                        },
                         onClose = { isAdminPanelOpen = false }
                     )
-                } else {
-                    com.example.ui.screens.admin.LocalAdminDashboardScreen(
-                        onClose = { isAdminPanelOpen = false },
+                } else if (!LocalAdminStore.isSessionActive()) {
+                    LocalAdminLockScreen(
+                        onUnlockSuccess = {
+                            LocalAdminStore.refreshSessionTick()
+                        },
+                        onExit = { isAdminPanelOpen = false },
                         onLogout = {
-                            com.example.data.local.LocalAdminStore.logout()
+                            LocalAdminStore.logout()
                             isAdminLoggedIn = false
                             isAdminPanelOpen = false
+                        }
+                    )
+                } else {
+                    LocalAdminDashboardScreen(
+                        onClose = { isAdminPanelOpen = false },
+                        onLogout = {
+                            LocalAdminStore.logout()
+                            isAdminLoggedIn = false
+                            isAdminPanelOpen = false
+                        },
+                        onSessionExpired = {
+                            LocalAdminStore.refreshSessionTick()
                         }
                     )
                 }
@@ -123,13 +202,18 @@ fun StudioApp() {
                 when (currentTab) {
                     StudioTab.DASHBOARD -> DashboardScreen(
                         onVideoClick = { selectedVideoForDetail = it },
-                        onAnalyticsClick = { currentTab = StudioTab.ANALYTICS }
+                        onAnalyticsClick = {
+                            currentTab = StudioTab.ANALYTICS
+                            activeAnalyticsDrilldown = null
+                        }
                     )
                     StudioTab.CONTENT -> ContentScreen(
                         onVideoClick = { selectedVideoForDetail = it }
                     )
                     StudioTab.ANALYTICS -> AnalyticsScreen(
-                        onVideoClick = { selectedVideoForDetail = it }
+                        onVideoClick = { selectedVideoForDetail = it },
+                        activeDrilldownMetric = activeAnalyticsDrilldown,
+                        onDrilldownChange = { activeAnalyticsDrilldown = it }
                     )
                     StudioTab.COMMUNITY -> CommunityScreen()
                     StudioTab.EARN -> EarnScreen(
